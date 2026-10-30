@@ -546,7 +546,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
         </div>
         <img id="receiptLogoPreview" src="./receipt-logo.png" alt="Current receipt logo" style="display:block;width:120px;max-height:160px;object-fit:contain;background:white;border:1px solid #ddd;padding:8px;border-radius:8px">
         <button class="btn sm" id="resetReceiptLogo" type="button">Restore Rooster Berg logo</button>
-        <p class="muted">PNG, JPG or WebP, up to 1 MB. The logo is saved on this device only. A white or transparent background works best.</p>
+        <p class="muted">PNG, JPG or WebP, up to 700 KB. Only the owner can change the shared logo. Changes sync to all signed-in devices. A white or transparent background works best.</p>
         <p class="muted" id="receiptLogoStatus" role="status" hidden></p>
         <div class="field"><label for="receiptSpacing">Receipt spacing</label>
           <select id="receiptSpacing"><option value="compact">Compact</option><option value="roomy">Roomy (longer receipt)</option><option value="extra">Extra space</option></select>
@@ -767,12 +767,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
   var FB_ON = !!(FB_CFG && FB_CFG.apiKey && FB_CFG.projectId && String(FB_CFG.apiKey).indexOf('PASTE') !== 0);
   var unsubs = [];
   var PREF_KEY = 'orderpad.prefs';
-  var RECEIPT_LOGO_KEY = 'orderpad.receiptLogo';
-  var customReceiptLogo = '';
-  try {
-    var savedLogo = localStorage.getItem(RECEIPT_LOGO_KEY) || '';
-    if (isReceiptLogoData(savedLogo)) customReceiptLogo = savedLogo;
-  } catch (e) {}
+  var customReceiptLogo = '', sharedLogoEnabled = true, sharedLogoReady = false, sharedLogoSaving = false;
   var prefs = { palette: 'sunny', mode: 'auto', size: 'normal', currency: 'none', shopName: '', receiptWidth: '80', receiptSpacing: 'roomy', receiptFooter: 'Thank you!', receiptLogo: 'on' };
   try {
     var sp = JSON.parse(localStorage.getItem(PREF_KEY) || 'null');
@@ -908,7 +903,35 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
   function fromSnap(snap) {
     return snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
   }
+  function subscribeReceiptBranding() {
+    unsubs.push(db.collection('appControl').doc('receiptBranding').onSnapshot({ includeMetadataChanges: true }, function (snap) {
+      if (snap.metadata.hasPendingWrites || (!snap.exists && snap.metadata.fromCache)) return;
+      var data = snap.exists ? snap.data() : {};
+      customReceiptLogo = isReceiptLogoData(data.logo) ? data.logo : '';
+      sharedLogoEnabled = data.enabled !== false;
+      sharedLogoReady = true;
+      renderSettings();
+    }, function () {
+      sharedLogoReady = false;
+      $('receiptLogoStatus').textContent = 'Cannot load shared logo settings. Ask the owner to publish the updated Firebase rules, then reload.';
+      $('receiptLogoStatus').hidden = false;
+      renderSettings();
+    }));
+  }
+  async function saveSharedReceiptLogo(logo, enabled) {
+    if (!canCorrectShifts() || !sharedLogoReady || state.mode !== 'firebase' || !db) throw new Error('Only the owner can change the shared logo after it loads.');
+    if (logo !== '' && !isReceiptLogoData(logo)) throw new Error('Choose a valid PNG, JPG or WebP logo.');
+    if (!navigator.onLine) throw new Error('Connect to the internet to change the logo on all devices.');
+    await db.runTransaction(async function (transaction) {
+      transaction.set(db.collection('appControl').doc('receiptBranding'), { logo: logo, enabled: !!enabled });
+    });
+    customReceiptLogo = logo; sharedLogoEnabled = !!enabled;
+  }
+  function sharedLogoError(error) {
+    return error && error.code === 'permission-denied' ? 'Permission denied. Publish the updated Firebase rules and sign in as owner.' : (error.message || 'Could not save the shared logo. Try again.');
+  }
   function subscribe() {
+    if (state.mode === 'firebase') subscribeReceiptBranding();
     var got = { items: false, orders: false, days: false, shifts: false, workers: false, payments: false };
     var limited = state.mode === 'firebase' && state.worker;
     function done() { state.loaded = got.items && got.orders && got.days && got.shifts && got.workers && got.payments; render(); }
@@ -1101,12 +1124,12 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
   }
 
   function isReceiptLogoData(value) {
-    return typeof value === 'string' && value.length <= 1400000 && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(value);
+    return typeof value === 'string' && value.length <= 1000000 && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(value);
   }
   function receiptLogoSource() { return customReceiptLogo || './receipt-logo.png'; }
   function receiptLogoFileError(file) {
     if (!file || ['image/png', 'image/jpeg', 'image/webp'].indexOf(file.type) < 0) return 'Choose a PNG, JPG or WebP image.';
-    if (!file.size || file.size > 1024 * 1024) return 'Choose an image smaller than 1 MB.';
+    if (!file.size || file.size > 700 * 1024) return 'Choose an image up to 700 KB.';
     return '';
   }
   function readReceiptLogo(file) {
@@ -1133,7 +1156,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
   function receiptHtml(o) {
     var lines = o.lines || [];
     var allPriced = lines.length > 0 && lines.every(function (l) { return typeof l.price === 'number'; });
-    return '<header>' + (prefs.receiptLogo !== 'off' ? '<img class="receipt-logo" src="' + esc(receiptLogoSource()) + '" alt="Restaurant logo">' : '') + '<h1>' + esc(prefs.shopName || 'Rooster Berg') + '</h1><p>ORDER RECEIPT</p></header>' +
+    return '<header>' + (sharedLogoEnabled ? '<img class="receipt-logo" src="' + esc(receiptLogoSource()) + '" alt="Restaurant logo">' : '') + '<h1>' + esc(prefs.shopName || 'Rooster Berg') + '</h1><p>ORDER RECEIPT</p></header>' +
       '<p><b>Order #' + esc(pad(o.no || 0)) + '</b><br>' +
       (o.createdAt ? esc(new Date(o.createdAt).toLocaleString()) + '<br>' : '') +
       'Customer: ' + esc(o.customer || 'No name') + '</p><hr>' +
@@ -1165,6 +1188,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
   var receiptPrinting = false;
   async function printOrder(o) {
     if (receiptPrinting) return;
+    if (state.mode === 'firebase' && !sharedLogoReady) { toast('The shared logo is still loading. Check your connection and Firebase rules, then retry.'); return; }
     receiptPrinting = true;
     var receipt = document.getElementById('thermalReceipt');
     if (!receipt) {
@@ -1271,7 +1295,11 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     $('shopTitle').textContent = prefs.shopName || 'Order Pad';
     var logoPreview = $('receiptLogoPreview');
     if (logoPreview.getAttribute('src') !== receiptLogoSource()) logoPreview.src = receiptLogoSource();
-    $('receiptLogo').value = prefs.receiptLogo === 'off' ? 'off' : 'on';
+    $('receiptLogo').value = sharedLogoEnabled ? 'on' : 'off';
+    var canBrand = canCorrectShifts() && sharedLogoReady && !sharedLogoSaving;
+    $('receiptLogo').disabled = !canBrand;
+    $('receiptLogoUpload').disabled = !canBrand;
+    $('resetReceiptLogo').disabled = !canBrand;
     $('receiptWidth').value = prefs.receiptWidth === '58' ? '58' : '80';
     $('receiptSpacing').value = ['compact', 'roomy', 'extra'].indexOf(prefs.receiptSpacing) >= 0 ? prefs.receiptSpacing : 'roomy';
     if (document.activeElement !== $('receiptFooter')) $('receiptFooter').value = prefs.receiptFooter;
@@ -1815,30 +1843,35 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     savePrefs(); applyTheme(); render();
   });
   $('receiptLogoUpload').addEventListener('change', async function () {
+    if (!canCorrectShifts() || sharedLogoSaving) return;
     var file = this.files && this.files[0]; if (!file) return;
     var status = $('receiptLogoStatus'); status.hidden = false;
     var error = receiptLogoFileError(file);
     if (error) { status.textContent = error; this.value = ''; return; }
-    this.disabled = true; $('resetReceiptLogo').disabled = true;
-    status.textContent = 'Loading logo…';
+    sharedLogoSaving = true; renderSettings(); status.textContent = 'Saving logo for all devices…';
     try {
       var data = await readReceiptLogo(file);
-      try { localStorage.setItem(RECEIPT_LOGO_KEY, data); }
-      catch (e) { throw new Error('Could not save the logo on this device. Try a smaller image or allow browser storage.'); }
-      customReceiptLogo = data;
-      prefs.receiptLogo = 'on'; savePrefs();
-      renderSettings(); status.textContent = 'Logo saved. It will appear on your next receipt.';
-    } catch (e) { status.textContent = e.message || 'Could not load the logo. Try another image.'; }
-    finally { this.value = ''; this.disabled = false; $('resetReceiptLogo').disabled = false; }
+      await saveSharedReceiptLogo(data, true);
+      status.textContent = 'Logo saved for all devices. Offline devices will receive it when they reconnect.';
+    } catch (e) { status.textContent = sharedLogoError(e); }
+    finally { this.value = ''; sharedLogoSaving = false; renderSettings(); }
   });
-  $('resetReceiptLogo').addEventListener('click', function () {
+  $('resetReceiptLogo').addEventListener('click', async function () {
+    if (!canCorrectShifts() || sharedLogoSaving) return;
     var status = $('receiptLogoStatus'); status.hidden = false;
-    try { localStorage.removeItem(RECEIPT_LOGO_KEY); }
-    catch (e) { status.textContent = 'Could not restore the logo. Allow browser storage and try again.'; return; }
-    customReceiptLogo = ''; prefs.receiptLogo = 'on'; savePrefs(); renderSettings();
-    status.textContent = 'Rooster Berg logo restored.';
+    sharedLogoSaving = true; renderSettings(); status.textContent = 'Restoring logo for all devices…';
+    try { await saveSharedReceiptLogo('', true); status.textContent = 'Rooster Berg logo restored for all devices.'; }
+    catch (e) { status.textContent = sharedLogoError(e); }
+    finally { sharedLogoSaving = false; renderSettings(); }
   });
-  $('receiptLogo').addEventListener('change', function () { prefs.receiptLogo = this.value === 'off' ? 'off' : 'on'; savePrefs(); });
+  $('receiptLogo').addEventListener('change', async function () {
+    if (!canCorrectShifts() || sharedLogoSaving) return;
+    var enabled = this.value !== 'off', status = $('receiptLogoStatus'); status.hidden = false;
+    sharedLogoSaving = true; renderSettings(); status.textContent = 'Saving logo setting…';
+    try { await saveSharedReceiptLogo(customReceiptLogo, enabled); status.textContent = 'Logo setting saved for all devices.'; }
+    catch (e) { status.textContent = sharedLogoError(e); }
+    finally { sharedLogoSaving = false; renderSettings(); }
+  });
   $('receiptFooter').addEventListener('input', function () { prefs.receiptFooter = this.value.slice(0, 500); savePrefs(); });
   $('receiptSpacing').addEventListener('change', function () { prefs.receiptSpacing = this.value; savePrefs(); });
   $('receiptWidth').addEventListener('change', function () {
@@ -2022,6 +2055,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
         state.auth = 'in'; db = fs; state.loaded = false;
         render(); subscribe(); watchSession(user);
       } else {
+        customReceiptLogo = ''; sharedLogoEnabled = true; sharedLogoReady = false;
         db = null; state.auth = 'out'; state.loaded = false; state.worker = false; state.manager = false; state.userEmail = '';
         if (state.tab === 'settings') state.tab = state.prevTab || 'new';
         state.items = []; state.orders = []; state.days = []; state.shifts = []; state.rates = []; state.payments = []; state.rateDraft = {}; state.editShift = null; state.editDraft = null;

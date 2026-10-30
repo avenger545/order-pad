@@ -80,8 +80,19 @@ paper. Test one receipt to check your printer's darkness and image quality.
 Printing waits for the logo to load. No additional Firebase rules are needed.
 
 CHANGE LOGO INSIDE THE APP
-Settings > Receipt printer > Choose a new logo. Select PNG, JPG or WebP up to 1 MB.
-A preview appears and the logo saves on this browser/device, ready for printing.
+Settings > Receipt printer > Choose a new logo. Select PNG, JPG or WebP up to 700 KB.
+A preview appears; the owner saves the logo to Firebase for all signed-in devices.
 The image keeps its proportions and fits both paper widths.
 Choose Restore Rooster Berg logo to return to the included image, or No logo
-to hide it. Configure each printing device separately. No Firebase rule changes.
+to hide it. Publish the included Firebase rules for shared logo permissions.
+
+SHARED RECEIPT LOGO — REQUIRED SETUP
+1. Publish the included firestore.rules in Firebase Firestore > Rules.
+2. Upload every website file to GitHub and refresh each device once.
+3. Sign in as owner; Settings > Receipt printer > Choose a new logo.
+4. Upload the logo once (PNG/JPG/WebP, up to 700 KB).
+The logo, restore action and show/hide setting now sync to all signed-in devices.
+Only the owner can change them. Offline devices get updates when reconnected.
+An older device-only logo must be uploaded once again by the owner to share it.
+Paper size, spacing, shop name and footer message remain device-specific.
+No orders, shifts, payment history or passwords are changed by this update.
