@@ -468,7 +468,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
-<script>window.ORDERPAD_CONFIG = {"apiKey": "AIzaSyCsTiArbQIHquJM0MRHdb2_Ji1RcSP6g9g", "authDomain": "order-pad-4230d.firebaseapp.com", "projectId": "order-pad-4230d", "storageBucket": "order-pad-4230d.firebasestorage.app", "messagingSenderId": "209577902584", "appId": "1:209577902584:web:162f01ae8a12df1097560d", "ownerEmail": "danizghrayzi@gmail.com"};</script>
+<script>window.ORDERPAD_CONFIG = {"apiKey": "AIzaSyCsTiArbQIHquJM0MRHdb2_Ji1RcSP6g9g", "authDomain": "order-pad-4230d.firebaseapp.com", "projectId": "order-pad-4230d", "storageBucket": "order-pad-4230d.firebasestorage.app", "messagingSenderId": "209577902584", "appId": "1:209577902584:web:162f01ae8a12df1097560d", "ownerEmail": "danizghrayzi@gmail.com", "managerEmail": "samer@gmail.com"};</script>
 <div class="app">
   <header class="top">
     <div class="brand">
@@ -730,7 +730,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
   var state = {
     items: [], orders: [], days: [],
     qty: {}, tab: 'new', filter: 'open', loaded: false, mode: 'pending',
-    armed: null, editId: null, draft: null, closing: false, openDays: {}, auth: FB_ON ? 'checking' : 'in', worker: false,
+    armed: null, editId: null, draft: null, closing: false, openDays: {}, auth: FB_ON ? 'checking' : 'in', worker: false, manager: false,
     shifts: [], shiftPeriod: 'week', editShift: null, editDraft: null,
     rates: [], payments: [], shiftView: 'pay', rateDraft: {}, openPays: {}
   };
@@ -1068,7 +1068,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
         '<div class="d-tot mono">' + (typeof d.total === 'number' ? money(d.total) : '—') + '<small>' + plural(d.count || 0, 'order', 'orders') + '</small></div></div>' +
         '<div class="d-actions">' +
         '<button class="btn sm" type="button" data-act="view" aria-expanded="' + isOpen + '">' + (isOpen ? 'Hide details' : 'View details') + '</button>' +
-        (state.worker ? '' : '<button class="btn sm danger' + (armed ? ' armed' : '') + '" type="button" data-act="del">' + (armed ? 'Tap again to delete' : 'Delete day') + '</button>') +
+        ((state.worker || state.manager) ? '' : '<button class="btn sm danger' + (armed ? ' armed' : '') + '" type="button" data-act="del">' + (armed ? 'Tap again to delete' : 'Delete day') + '</button>') +
         '</div>' + detail + '</li>';
     }).join('');
   }
@@ -1082,6 +1082,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
       var key = 'item:' + i.id, armed = state.armed === key;
       var price = typeof i.price === 'number' ? '<span class="pr mono">' + money(i.price) + '</span>' : '<span class="pr">No price</span>';
       return '<li class="itemrow" data-id="' + esc(i.id) + '"><div class="nm">' + esc(i.name) + price + '</div>' +
+        '<button class="btn sm" type="button" data-act="edit">Edit</button>' +
         '<button class="btn sm danger' + (armed ? ' armed' : '') + '" type="button" data-act="del">' + (armed ? 'Tap again to remove' : 'Remove') + '</button></li>';
     }).join('');
   }
@@ -1101,7 +1102,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     if (document.activeElement !== $('shopName')) $('shopName').value = prefs.shopName;
     $('shopTitle').textContent = prefs.shopName || 'Order Pad';
     $('acctText').textContent = state.mode === 'firebase' && state.userEmail
-      ? 'Signed in as ' + state.userEmail + (state.worker ? ' (store login)' : ' (owner)')
+      ? 'Signed in as ' + state.userEmail + (state.worker ? ' (store login)' : (state.manager ? ' (manager)' : ' (owner)'))
       : (state.mode === 'cloud' ? 'Connected through Claude.' : 'Data is stored on this device only.');
   }
 
@@ -1477,6 +1478,21 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
   $('itemList').addEventListener('click', function (e) {
     var b = e.target.closest('button[data-act]'); if (!b) return;
     var id = b.closest('.itemrow').dataset.id, key = 'item:' + id;
+    if (state.worker) return;
+    if (b.dataset.act === 'edit') {
+      var item = state.items.find(function (x) { return x.id === id; }); if (!item) return;
+      var name = window.prompt('Item name', item.name); if (name === null) return;
+      name = name.trim(); if (!name) { toast('Type an item name.'); return; }
+      var raw = window.prompt('Price (leave blank for no price)', typeof item.price === 'number' ? String(item.price) : '');
+      if (raw === null) return;
+      raw = raw.trim().replace(',', '.');
+      var price = raw === '' ? null : Number(raw);
+      if (price !== null && (!isFinite(price) || price < 0)) { toast('Enter a valid price.'); return; }
+      if (price !== null) price = Math.round(price * 100) / 100;
+      disarm();
+      guarded(function () { return put('items', Object.assign({}, item, { name: name, price: price })); }, 'Item updated');
+      return;
+    }
     if (state.armed !== key) { arm(key); return; }
     disarm();
     guarded(function () { return remove('items', id); }, 'Item removed');
@@ -1642,12 +1658,14 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
       unsubs = [];
       if (user) {
         state.userEmail = user.email || '';
-        state.worker = !!(FB_CFG.ownerEmail && user.email && String(user.email).toLowerCase() !== String(FB_CFG.ownerEmail).toLowerCase());
+        var email = String(user.email || '').toLowerCase();
+        state.manager = !!email && email === String(FB_CFG.managerEmail || '').toLowerCase();
+        state.worker = !state.manager && (!email || email !== String(FB_CFG.ownerEmail || '').toLowerCase());
         if (state.worker && state.tab === 'items') state.tab = 'new';
         state.auth = 'in'; db = fs; state.loaded = false;
         render(); subscribe();
       } else {
-        db = null; state.auth = 'out'; state.loaded = false; state.worker = false; state.userEmail = '';
+        db = null; state.auth = 'out'; state.loaded = false; state.worker = false; state.manager = false; state.userEmail = '';
         if (state.tab === 'settings') state.tab = state.prevTab || 'new';
         state.items = []; state.orders = []; state.days = []; state.shifts = []; state.rates = []; state.payments = []; state.rateDraft = {}; state.editShift = null; state.editDraft = null;
         state.qty = {}; state.editId = null; state.draft = null; state.closing = false;

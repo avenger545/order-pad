@@ -1,0 +1,24 @@
+ORDER PAD — MANAGER UPDATE
+
+1. In Firebase project order-pad-4230d, open Firestore Database > Rules.
+   Replace the entire rules text with firestore.rules from this folder and Publish.
+   Uploading the website does not publish Firebase rules.
+2. In Firebase Authentication > Users, check for samer@gmail.com.
+   If missing, use Add user with that exact email and a strong private password.
+   If already present, use the existing account; do not create a duplicate.
+3. Upload this extracted folder to your existing Netlify site's manual deployment area.
+   index.html must be at the top level of the deployed folder.
+4. Refresh the app, sign out, and sign in as samer@gmail.com.
+   Settings should show (manager).
+
+Manager can add/edit/remove menu items; view and edit shifts; set hourly rates;
+mark workers as paid; view payment history; and undo a payment.
+Existing order access is available. Deleting saved days remains owner-only.
+Workers still cannot view total hours, rates, or payment history.
+Mark as paid records payment and resets the unpaid balance; it does not transfer money.
+
+Check with a completed test shift: edit it, save a rate, mark it paid, and inspect
+Payments history. Check the worker login still hides management controls.
+
+The app code was checked locally. Live Firebase access and deployment must be
+verified after publishing the rules and uploading the website.
