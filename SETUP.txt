@@ -69,3 +69,19 @@ The message replaces Thank you!; leave it blank to omit the footer message.
 Settings save automatically on this printing device; configure other devices
 separately. This affects Order Pad's Print receipt output. Other printing apps
 may override the layout. No additional Firestore rules changes are required.
+
+ROOSTER BERG RECEIPT LOGO
+Upload ALL files, including receipt-logo.png, to your GitHub Pages folder.
+The supplied restaurant image prints centered above the name on receipts.
+Settings > Receipt printer > Restaurant logo lets you turn it off or on.
+It is enabled by default. Color is converted to grayscale in the print layout.
+The original image includes its yellow background; this prints as gray on thermal
+paper. Test one receipt to check your printer's darkness and image quality.
+Printing waits for the logo to load. No additional Firebase rules are needed.
+
+CHANGE LOGO INSIDE THE APP
+Settings > Receipt printer > Choose a new logo. Select PNG, JPG or WebP up to 1 MB.
+A preview appears and the logo saves on this browser/device, ready for printing.
+The image keeps its proportions and fits both paper widths.
+Choose Restore Rooster Berg logo to return to the included image, or No logo
+to hide it. Configure each printing device separately. No Firebase rule changes.

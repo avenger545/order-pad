@@ -474,6 +474,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
   body > #thermalReceipt { display: block !important; margin: 0; padding: 4mm 2mm 10mm; box-sizing: border-box; font: 12px/1.5 Arial, sans-serif; color: black; background: white; overflow-wrap: anywhere; }
   #thermalReceipt * { color: black !important; background: transparent !important; box-shadow: none !important; }
   #thermalReceipt header, #thermalReceipt footer { text-align: center; display: block; padding: 0; margin: 0; position: static; }
+  #thermalReceipt .receipt-logo { display: block; width: 34mm; max-width: 100%; height: auto; margin: 0 auto 4mm; object-fit: contain; filter: grayscale(1); break-inside: avoid; }
   #thermalReceipt h1 { font-size: 17px; margin: 0 0 4px; }
   #thermalReceipt p { margin: 6px 0; }
   #thermalReceipt hr { border: 0; border-top: 1px dashed black; margin: 8px 0; }
@@ -537,6 +538,16 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
         <div class="field"><label for="receiptWidth">Paper width</label>
           <select id="receiptWidth"><option value="58">58 mm</option><option value="80">80 mm</option></select>
         </div>
+        <div class="field"><label for="receiptLogo">Restaurant logo</label>
+          <select id="receiptLogo"><option value="on">Print logo</option><option value="off">No logo</option></select>
+        </div>
+        <div class="field"><label for="receiptLogoUpload">Choose a new logo</label>
+          <input id="receiptLogoUpload" type="file" accept="image/png,image/jpeg,image/webp">
+        </div>
+        <img id="receiptLogoPreview" src="./receipt-logo.png" alt="Current receipt logo" style="display:block;width:120px;max-height:160px;object-fit:contain;background:white;border:1px solid #ddd;padding:8px;border-radius:8px">
+        <button class="btn sm" id="resetReceiptLogo" type="button">Restore Rooster Berg logo</button>
+        <p class="muted">PNG, JPG or WebP, up to 1 MB. The logo is saved on this device only. A white or transparent background works best.</p>
+        <p class="muted" id="receiptLogoStatus" role="status" hidden></p>
         <div class="field"><label for="receiptSpacing">Receipt spacing</label>
           <select id="receiptSpacing"><option value="compact">Compact</option><option value="roomy">Roomy (longer receipt)</option><option value="extra">Extra space</option></select>
         </div>
@@ -756,7 +767,13 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
   var FB_ON = !!(FB_CFG && FB_CFG.apiKey && FB_CFG.projectId && String(FB_CFG.apiKey).indexOf('PASTE') !== 0);
   var unsubs = [];
   var PREF_KEY = 'orderpad.prefs';
-  var prefs = { palette: 'sunny', mode: 'auto', size: 'normal', currency: 'none', shopName: '', receiptWidth: '80', receiptSpacing: 'roomy', receiptFooter: 'Thank you!' };
+  var RECEIPT_LOGO_KEY = 'orderpad.receiptLogo';
+  var customReceiptLogo = '';
+  try {
+    var savedLogo = localStorage.getItem(RECEIPT_LOGO_KEY) || '';
+    if (isReceiptLogoData(savedLogo)) customReceiptLogo = savedLogo;
+  } catch (e) {}
+  var prefs = { palette: 'sunny', mode: 'auto', size: 'normal', currency: 'none', shopName: '', receiptWidth: '80', receiptSpacing: 'roomy', receiptFooter: 'Thank you!', receiptLogo: 'on' };
   try {
     var sp = JSON.parse(localStorage.getItem(PREF_KEY) || 'null');
     if (sp && typeof sp === 'object') Object.keys(prefs).forEach(function (k) { if (typeof sp[k] === 'string') prefs[k] = sp[k]; });
@@ -1083,10 +1100,40 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     }).join('');
   }
 
+  function isReceiptLogoData(value) {
+    return typeof value === 'string' && value.length <= 1400000 && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(value);
+  }
+  function receiptLogoSource() { return customReceiptLogo || './receipt-logo.png'; }
+  function receiptLogoFileError(file) {
+    if (!file || ['image/png', 'image/jpeg', 'image/webp'].indexOf(file.type) < 0) return 'Choose a PNG, JPG or WebP image.';
+    if (!file.size || file.size > 1024 * 1024) return 'Choose an image smaller than 1 MB.';
+    return '';
+  }
+  function readReceiptLogo(file) {
+    return new Promise(function (resolve, reject) {
+      var reader = new FileReader();
+      reader.onerror = function () { reject(new Error('Could not read this image. Choose it again.')); };
+      reader.onload = function () {
+        var data = reader.result;
+        if (!isReceiptLogoData(data)) { reject(new Error('This image format is not supported.')); return; }
+        var img = new Image();
+        img.onerror = function () { reject(new Error('This file could not be opened as an image.')); };
+        img.onload = function () {
+          if (!img.naturalWidth || !img.naturalHeight || img.naturalWidth * img.naturalHeight > 16000000) {
+            reject(new Error('Choose an image with smaller dimensions (up to 16 megapixels).')); return;
+          }
+          resolve(data);
+        };
+        img.src = data;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
   function receiptHtml(o) {
     var lines = o.lines || [];
     var allPriced = lines.length > 0 && lines.every(function (l) { return typeof l.price === 'number'; });
-    return '<header><h1>' + esc(prefs.shopName || 'Order Pad') + '</h1><p>ORDER RECEIPT</p></header>' +
+    return '<header>' + (prefs.receiptLogo !== 'off' ? '<img class="receipt-logo" src="' + esc(receiptLogoSource()) + '" alt="Restaurant logo">' : '') + '<h1>' + esc(prefs.shopName || 'Rooster Berg') + '</h1><p>ORDER RECEIPT</p></header>' +
       '<p><b>Order #' + esc(pad(o.no || 0)) + '</b><br>' +
       (o.createdAt ? esc(new Date(o.createdAt).toLocaleString()) + '<br>' : '') +
       'Customer: ' + esc(o.customer || 'No name') + '</p><hr>' +
@@ -1102,7 +1149,23 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
       (prefs.receiptFooter.trim() ? '<hr><footer>' + esc(prefs.receiptFooter) + '</footer>' : '');
   }
 
-  function printOrder(o) {
+  function waitForReceiptLogo(img) {
+    if (!img) return Promise.resolve();
+    if (img.complete) return img.naturalWidth > 0 ? Promise.resolve() : Promise.reject(new Error('Logo unavailable'));
+    return new Promise(function (resolve, reject) {
+      var timer = setTimeout(function () { finish(new Error('Logo timed out')); }, 10000);
+      function finish(error) {
+        clearTimeout(timer); img.onload = null; img.onerror = null;
+        if (error) reject(error); else resolve();
+      }
+      img.onload = function () { finish(); };
+      img.onerror = function () { finish(new Error('Logo unavailable')); };
+    });
+  }
+  var receiptPrinting = false;
+  async function printOrder(o) {
+    if (receiptPrinting) return;
+    receiptPrinting = true;
     var receipt = document.getElementById('thermalReceipt');
     if (!receipt) {
       receipt = document.createElement('section'); receipt.id = 'thermalReceipt';
@@ -1111,7 +1174,12 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     receipt.style.width = prefs.receiptWidth === '58' ? '48mm' : '70mm';
     receipt.style.setProperty('--receipt-item-gap', ({ compact: '1mm', roomy: '3mm', extra: '5mm' })[prefs.receiptSpacing] || '3mm');
     receipt.innerHTML = receiptHtml(o);
-    try { window.print(); } catch (e) { toast('Printing is unavailable. Open the app in your browser and try again.'); }
+    try {
+      await waitForReceiptLogo(receipt.querySelector('img'));
+      window.print();
+    } catch (e) {
+      toast('Could not prepare the receipt. Choose the logo again in Settings, or turn off the logo and retry.');
+    } finally { receiptPrinting = false; }
   }
 
   function dayStart(d) {
@@ -1201,6 +1269,9 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     $('curSeg').innerHTML = segHtml('cur', [['none', 'None'], ['gel', '₾'], ['usd', '$'], ['eur', '€'], ['gbp', '£']], prefs.currency);
     if (document.activeElement !== $('shopName')) $('shopName').value = prefs.shopName;
     $('shopTitle').textContent = prefs.shopName || 'Order Pad';
+    var logoPreview = $('receiptLogoPreview');
+    if (logoPreview.getAttribute('src') !== receiptLogoSource()) logoPreview.src = receiptLogoSource();
+    $('receiptLogo').value = prefs.receiptLogo === 'off' ? 'off' : 'on';
     $('receiptWidth').value = prefs.receiptWidth === '58' ? '58' : '80';
     $('receiptSpacing').value = ['compact', 'roomy', 'extra'].indexOf(prefs.receiptSpacing) >= 0 ? prefs.receiptSpacing : 'roomy';
     if (document.activeElement !== $('receiptFooter')) $('receiptFooter').value = prefs.receiptFooter;
@@ -1743,6 +1814,31 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     else return;
     savePrefs(); applyTheme(); render();
   });
+  $('receiptLogoUpload').addEventListener('change', async function () {
+    var file = this.files && this.files[0]; if (!file) return;
+    var status = $('receiptLogoStatus'); status.hidden = false;
+    var error = receiptLogoFileError(file);
+    if (error) { status.textContent = error; this.value = ''; return; }
+    this.disabled = true; $('resetReceiptLogo').disabled = true;
+    status.textContent = 'Loading logo…';
+    try {
+      var data = await readReceiptLogo(file);
+      try { localStorage.setItem(RECEIPT_LOGO_KEY, data); }
+      catch (e) { throw new Error('Could not save the logo on this device. Try a smaller image or allow browser storage.'); }
+      customReceiptLogo = data;
+      prefs.receiptLogo = 'on'; savePrefs();
+      renderSettings(); status.textContent = 'Logo saved. It will appear on your next receipt.';
+    } catch (e) { status.textContent = e.message || 'Could not load the logo. Try another image.'; }
+    finally { this.value = ''; this.disabled = false; $('resetReceiptLogo').disabled = false; }
+  });
+  $('resetReceiptLogo').addEventListener('click', function () {
+    var status = $('receiptLogoStatus'); status.hidden = false;
+    try { localStorage.removeItem(RECEIPT_LOGO_KEY); }
+    catch (e) { status.textContent = 'Could not restore the logo. Allow browser storage and try again.'; return; }
+    customReceiptLogo = ''; prefs.receiptLogo = 'on'; savePrefs(); renderSettings();
+    status.textContent = 'Rooster Berg logo restored.';
+  });
+  $('receiptLogo').addEventListener('change', function () { prefs.receiptLogo = this.value === 'off' ? 'off' : 'on'; savePrefs(); });
   $('receiptFooter').addEventListener('input', function () { prefs.receiptFooter = this.value.slice(0, 500); savePrefs(); });
   $('receiptSpacing').addEventListener('change', function () { prefs.receiptSpacing = this.value; savePrefs(); });
   $('receiptWidth').addEventListener('change', function () {
