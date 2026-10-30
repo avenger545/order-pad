@@ -31,3 +31,13 @@ Disable browser headers/footers. Printing does not mark an order paid or done.
 
 Code and validation checks are local; live Firebase permissions and your physical
 printer need verification after deployment.
+
+CHANGE LOGIN PASSWORD
+After uploading the website files to GitHub, refresh the app and open
+Settings > Account > Change password. Enter the current password, a new password
+and the same new password again. Choose Save password.
+Owner, manager and worker accounts can each change their own password.
+This changes the shared login for everyone using that same email account.
+No additional Firestore rule changes are needed for this feature.
+Passwords are sent to Firebase Authentication; they are not saved in the
+app's Firestore database or local storage.

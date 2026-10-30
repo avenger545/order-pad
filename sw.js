@@ -1,4 +1,4 @@
-const CACHE = 'order-pad-v6-owner-shifts';
+const CACHE = 'order-pad-v7-password';
 const CORE = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png', './icon-maskable-512.png'];
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(CORE)).then(() => self.skipWaiting()));

@@ -539,6 +539,17 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
       <div class="setcard">
         <h3>Account</h3>
         <p class="muted" id="acctText"></p>
+        <button class="btn" id="openPassword" type="button" hidden>Change password</button>
+        <form id="passwordForm" class="stack" hidden>
+          <p class="muted">Change the password for your signed-in account. Anyone sharing this login will need the new password.</p>
+          <div class="field"><label for="currentPassword">Current password</label><input id="currentPassword" type="password" autocomplete="current-password" required></div>
+          <div class="field"><label for="newPassword">New password</label><input id="newPassword" type="password" autocomplete="new-password" minlength="6" required></div>
+          <div class="field"><label for="confirmPassword">Confirm new password</label><input id="confirmPassword" type="password" autocomplete="new-password" minlength="6" required></div>
+          <p class="muted">Use at least 6 characters. A longer, unique password is better.</p>
+          <p class="login-err" id="passwordError" role="alert" hidden></p>
+          <div class="sh-actions"><button class="btn primary" id="savePassword" type="submit">Save password</button><button class="btn" id="cancelPassword" type="button">Cancel</button></div>
+        </form>
+        <p class="muted" id="passwordStatus" role="status" hidden></p>
         <button class="btn" id="signOut" type="button" hidden>Sign out</button>
       </div>
       <p class="foot">Theme, text size, shop name, currency and receipt width are saved on this device only.</p>
@@ -1186,6 +1197,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     f.hidden = !msg;
     f.textContent = msg;
     $('signOut').hidden = !(state.mode === 'firebase' && state.auth === 'in');
+    $('openPassword').hidden = $('signOut').hidden;
   }
 
   function render() {
@@ -1699,6 +1711,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     render(); window.scrollTo(0, 0);
   });
   $('closeSettings').addEventListener('click', function () {
+    resetPasswordForm();
     state.tab = state.prevTab || 'new'; render(); window.scrollTo(0, 0);
   });
   $('view-settings').addEventListener('click', function (e) {
@@ -1731,6 +1744,38 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     return 'Could not sign in. Try again.';
   }
 
+  function resetPasswordForm() {
+    $('passwordForm').reset();
+    $('passwordForm').hidden = true;
+    $('passwordError').hidden = true;
+    $('passwordStatus').hidden = true;
+  }
+  function passwordErrorMessage(code) {
+    if (code === 'auth/wrong-password' || code === 'auth/invalid-credential' || code === 'auth/invalid-login-credentials') return 'The current password is incorrect. Try again.';
+    if (code === 'auth/weak-password' || code === 'auth/password-does-not-meet-requirements') return 'Choose a stronger password. Your account may require more characters, uppercase and lowercase letters, numbers or symbols.';
+    if (code === 'auth/network-request-failed') return 'Connection failed. Check your internet and try again.';
+    if (code === 'auth/too-many-requests') return 'Too many attempts. Wait a few minutes before trying again.';
+    if (code === 'auth/requires-recent-login' || code === 'auth/user-token-expired' || code === 'auth/session-changed') return 'Please sign in again before changing your password.';
+    if (code === 'auth/user-disabled') return 'This account has been disabled.';
+    return 'Could not change your password. Please try again.';
+  }
+  function passwordValidation(current, next, confirm) {
+    if (!current || !next || !confirm) return 'Complete all three password fields.';
+    if (next.length < 6) return 'Use at least 6 characters for the new password.';
+    if (next !== confirm) return 'The new passwords do not match.';
+    if (current === next) return 'Choose a password different from your current one.';
+    return '';
+  }
+  async function changeOwnPassword(auth, current, next) {
+    var user = auth.currentUser;
+    if (!user || !user.email) throw { code: 'auth/session-changed' };
+    var credential = firebase.auth.EmailAuthProvider.credential(user.email, current);
+    await user.reauthenticateWithCredential(credential);
+    if (!auth.currentUser || auth.currentUser.uid !== user.uid) throw { code: 'auth/session-changed' };
+    await user.updatePassword(next);
+    return user.uid;
+  }
+
   function startFirebase() {
     state.mode = 'firebase';
     var auth, fs;
@@ -1752,10 +1797,41 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
       catch (ex) { err.textContent = loginMsg(ex && ex.code); err.hidden = false; }
       $('loginBtn').disabled = false;
     });
-    $('signOut').addEventListener('click', function () { if (state.signOut) state.signOut(); });
+    $('openPassword').addEventListener('click', function () {
+      if (!auth.currentUser || $('savePassword').disabled) return;
+      resetPasswordForm(); $('passwordForm').hidden = false; $('currentPassword').focus();
+    });
+    $('cancelPassword').addEventListener('click', resetPasswordForm);
+    $('passwordForm').addEventListener('submit', async function (e) {
+      e.preventDefault();
+      if ($('savePassword').disabled) return;
+      var current = $('currentPassword').value, next = $('newPassword').value, confirm = $('confirmPassword').value;
+      var err = $('passwordError'); err.hidden = true; $('passwordStatus').hidden = true;
+      var invalid = passwordValidation(current, next, confirm);
+      if (invalid) { err.textContent = invalid; err.hidden = false; return; }
+      $('savePassword').disabled = true; $('cancelPassword').disabled = true;
+      $('savePassword').textContent = 'Saving…';
+      try {
+        var changedUid = await changeOwnPassword(auth, current, next);
+        resetPasswordForm();
+        if (auth.currentUser && auth.currentUser.uid === changedUid) {
+          $('passwordStatus').textContent = 'Password changed. Use your new password next time you sign in.';
+          $('passwordStatus').hidden = false;
+        }
+      } catch (ex) {
+        err.textContent = passwordErrorMessage(ex && ex.code); err.hidden = false;
+      } finally {
+        $('passwordForm').reset();
+        $('savePassword').disabled = false; $('cancelPassword').disabled = false;
+        $('savePassword').textContent = 'Save password';
+        current = next = confirm = '';
+      }
+    });
+    $('signOut').addEventListener('click', function () { resetPasswordForm(); if (state.signOut) state.signOut(); });
     window.addEventListener('online', renderFoot);
     window.addEventListener('offline', renderFoot);
     auth.onAuthStateChanged(function (user) {
+      if (!user || user.email !== state.userEmail) resetPasswordForm();
       unsubs.forEach(function (u) { try { u(); } catch (e) {} });
       unsubs = [];
       if (user) {
