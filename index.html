@@ -463,6 +463,28 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
 </style>
 <style id="paletteStyle"></style>
 
+<style>
+#thermalReceipt { display: none; }
+@media print {
+  @page { size: auto; margin: 0; }
+  html, body { background: white !important; color: black !important; margin: 0 !important; padding: 0 !important; min-width: 0 !important; }
+  body > * { display: none !important; }
+  body > #thermalReceipt { display: block !important; margin: 0; padding: 3mm 2mm; box-sizing: border-box; font: 12px/1.4 Arial, sans-serif; color: black; background: white; overflow-wrap: anywhere; }
+  #thermalReceipt * { color: black !important; background: transparent !important; box-shadow: none !important; }
+  #thermalReceipt header, #thermalReceipt footer { text-align: center; display: block; padding: 0; margin: 0; position: static; }
+  #thermalReceipt h1 { font-size: 17px; margin: 0 0 4px; }
+  #thermalReceipt p { margin: 6px 0; }
+  #thermalReceipt hr { border: 0; border-top: 1px dashed black; margin: 8px 0; }
+  #thermalReceipt table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  #thermalReceipt th, #thermalReceipt td { padding: 4px 0; text-align: left; vertical-align: top; }
+  #thermalReceipt th:last-child, #thermalReceipt td:last-child { width: 35%; text-align: right; }
+  #thermalReceipt td:first-child { padding-right: 5px; }
+  #thermalReceipt tr { break-inside: avoid; }
+  #thermalReceipt small { font-size: 10px; }
+  #thermalReceipt .receipt-total { display: flex; justify-content: space-between; gap: 8px; font-size: 14px; }
+  #thermalReceipt .receipt-note { white-space: pre-wrap; }
+}
+</style>
 </head>
 <body>
 <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
@@ -508,11 +530,18 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
         <div class="field"><label>Currency</label><div class="seg" id="curSeg"></div></div>
       </div>
       <div class="setcard">
+        <h3>Receipt printer</h3>
+        <div class="field"><label for="receiptWidth">Paper width</label>
+          <select id="receiptWidth"><option value="58">58 mm</option><option value="80">80 mm</option></select>
+        </div>
+        <p class="muted">Choose your thermal printer in the print window. Use matching paper size, 100% scale, no margins, and turn off headers and footers.</p>
+      </div>
+      <div class="setcard">
         <h3>Account</h3>
         <p class="muted" id="acctText"></p>
         <button class="btn" id="signOut" type="button" hidden>Sign out</button>
       </div>
-      <p class="foot">Theme, text size, shop name and currency are saved on this device only.</p>
+      <p class="foot">Theme, text size, shop name, currency and receipt width are saved on this device only.</p>
     </section>
 
     <section id="view-login" hidden>
@@ -615,6 +644,18 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
         <ul class="shifts" id="activeList"></ul>
         <p class="muted" id="noActive">Nobody is on shift.</p>
       </div>
+      <div class="setcard" id="shiftCorrectionPanel" hidden>
+        <h3>Owner: shift corrections</h3>
+        <button class="btn sm" id="addMissedShift" type="button">Add missed shift</button>
+        <form id="manualShiftForm" class="stack" hidden>
+          <h3 id="manualShiftTitle">Add missed shift</h3>
+          <div class="field"><label for="manualName">Worker name</label><input id="manualName" maxlength="60" required></div>
+          <div class="field"><label for="manualStart">Actual start date and time</label><input id="manualStart" type="datetime-local" required></div>
+          <div class="field"><label for="manualEnd">Actual end date and time (optional)</label><input id="manualEnd" type="datetime-local"></div>
+          <p class="muted">Leave the end empty if the worker is still on shift. Times use this device’s local time.</p>
+          <div class="sh-actions"><button class="btn primary" id="saveManualShift" type="submit">Save shift</button><button class="btn" id="cancelManualShift" type="button">Cancel</button></div>
+        </form>
+      </div>
       <div class="stack" id="ownerShifts" hidden>
         <div class="chips" id="shiftViews"></div>
         <div class="stack" id="pv-pay">
@@ -688,7 +729,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
   var FB_ON = !!(FB_CFG && FB_CFG.apiKey && FB_CFG.projectId && String(FB_CFG.apiKey).indexOf('PASTE') !== 0);
   var unsubs = [];
   var PREF_KEY = 'orderpad.prefs';
-  var prefs = { palette: 'sunny', mode: 'auto', size: 'normal', currency: 'none', shopName: '' };
+  var prefs = { palette: 'sunny', mode: 'auto', size: 'normal', currency: 'none', shopName: '', receiptWidth: '80' };
   try {
     var sp = JSON.parse(localStorage.getItem(PREF_KEY) || 'null');
     if (sp && typeof sp === 'object') Object.keys(prefs).forEach(function (k) { if (typeof sp[k] === 'string') prefs[k] = sp[k]; });
@@ -1007,11 +1048,42 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
         '<div class="o-foot"><div class="o-meta"><span class="mono">' + esc(when(o.createdAt || Date.now())) + (o.editedAt ? ' · edited ' + esc(clock(o.editedAt)) : '') + '</span>' +
         (typeof o.total === 'number' ? '<span>Total <b class="mono">' + money(o.total) + '</b></span>' : '') + '</div>' +
         '<div class="o-actions">' +
+        '<button class="btn sm" type="button" data-act="print">Print receipt</button>' +
         '<button class="btn sm' + (isDone ? '' : ' primary') + '" type="button" data-act="toggle">' + (isDone ? 'Reopen' : 'Mark done') + '</button>' +
         '<button class="btn sm" type="button" data-act="edit">Edit</button>' +
         '<button class="btn sm danger' + (armed ? ' armed' : '') + '" type="button" data-act="del">' + (armed ? 'Tap again to delete' : 'Delete') + '</button>' +
         '</div></div></li>';
     }).join('');
+  }
+
+  function receiptHtml(o) {
+    var lines = o.lines || [];
+    var allPriced = lines.length > 0 && lines.every(function (l) { return typeof l.price === 'number'; });
+    return '<header><h1>' + esc(prefs.shopName || 'Order Pad') + '</h1><p>ORDER RECEIPT</p></header>' +
+      '<p><b>Order #' + esc(pad(o.no || 0)) + '</b><br>' +
+      (o.createdAt ? esc(new Date(o.createdAt).toLocaleString()) + '<br>' : '') +
+      'Customer: ' + esc(o.customer || 'No name') + '</p><hr>' +
+      '<table><thead><tr><th>Item</th><th>Amount</th></tr></thead><tbody>' +
+      lines.map(function (l) {
+        var priced = typeof l.price === 'number';
+        return '<tr><td>' + esc(l.name) + '<br><small>' + esc(l.qty) + ' × ' +
+          (priced ? esc(money(l.price)) : 'No price') + '</small></td><td>' +
+          (priced ? esc(money(l.price * l.qty)) : '—') + '</td></tr>';
+      }).join('') + '</tbody></table><hr>' +
+      (typeof o.total === 'number' ? '<div class="receipt-total"><b>' + (allPriced ? 'Total' : 'Priced items total') + '</b><b>' + esc(money(o.total)) + '</b></div>' : '<p>Total not set</p>') +
+      (o.note ? '<hr><p class="receipt-note">Note: ' + esc(o.note) + '</p>' : '') +
+      '<hr><footer>Thank you!</footer>';
+  }
+
+  function printOrder(o) {
+    var receipt = document.getElementById('thermalReceipt');
+    if (!receipt) {
+      receipt = document.createElement('section'); receipt.id = 'thermalReceipt';
+      document.body.appendChild(receipt);
+    }
+    receipt.style.width = prefs.receiptWidth === '58' ? '48mm' : '70mm';
+    receipt.innerHTML = receiptHtml(o);
+    try { window.print(); } catch (e) { toast('Printing is unavailable. Open the app in your browser and try again.'); }
   }
 
   function dayStart(d) {
@@ -1101,6 +1173,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     $('curSeg').innerHTML = segHtml('cur', [['none', 'None'], ['gel', '₾'], ['usd', '$'], ['eur', '€'], ['gbp', '£']], prefs.currency);
     if (document.activeElement !== $('shopName')) $('shopName').value = prefs.shopName;
     $('shopTitle').textContent = prefs.shopName || 'Order Pad';
+    $('receiptWidth').value = prefs.receiptWidth === '58' ? '58' : '80';
     $('acctText').textContent = state.mode === 'firebase' && state.userEmail
       ? 'Signed in as ' + state.userEmail + (state.worker ? ' (store login)' : (state.manager ? ' (manager)' : ' (owner)'))
       : (state.mode === 'cloud' ? 'Connected through Claude.' : 'Data is stored on this device only.');
@@ -1275,19 +1348,40 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
       localStorage.setItem('orderpad.names', JSON.stringify(l.slice(0, 6)));
     } catch (e) {}
   }
-  function shiftForm(s) {
-    var d = state.editDraft || { name: s.name, start: toInput(s.start), end: s.end ? toInput(s.end) : '' };
-    return '<li class="shift" data-id="' + esc(s.id) + '"><div class="sh-form">' +
-      '<div class="field"><label for="esName">Name</label><input id="esName" type="text" maxlength="60" data-f="name" value="' + esc(d.name) + '"></div>' +
-      '<div class="field"><label for="esStart">Start</label><input id="esStart" type="datetime-local" data-f="start" value="' + esc(d.start) + '"></div>' +
-      '<div class="field"><label for="esEnd">End</label><input id="esEnd" type="datetime-local" data-f="end" value="' + esc(d.end) + '"></div>' +
-      '<div class="sh-actions"><button class="btn sm primary" type="button" data-act="save">Save</button><button class="btn sm" type="button" data-act="cancel">Cancel</button></div>' +
-      '</div></li>';
+  function canCorrectShifts() {
+    return state.auth === 'in' && !!state.userEmail &&
+      state.userEmail.toLowerCase() === String(FB_CFG.ownerEmail || '').toLowerCase();
+  }
+  var manualShiftId = null;
+  function openShiftCorrection(shift) {
+    if (!canCorrectShifts()) return;
+    if (shift && paidSet()[shift.id]) { toast('Undo the payment before correcting a paid shift.'); return; }
+    manualShiftId = shift ? shift.id : null;
+    $('manualShiftTitle').textContent = shift ? 'Correct shift times' : 'Add missed shift';
+    $('manualName').value = shift ? shift.name : $('shiftName').value.trim();
+    $('manualStart').value = shift ? toInput(shift.start) : '';
+    $('manualEnd').value = shift && shift.end !== null ? toInput(shift.end) : '';
+    $('manualShiftForm').hidden = false;
+    $('shiftCorrectionPanel').scrollIntoView({ block: 'center' });
+    $('manualName').focus();
+  }
+  function validateShiftCorrection(name, start, end, id) {
+    if (!name || name.length > 60) return 'Enter a worker name (up to 60 characters).';
+    if (!isFinite(start) || (end !== null && !isFinite(end))) return 'Choose valid dates and times.';
+    if (end !== null && end < start) return 'The end cannot be before the start.';
+    if (start > Date.now() || (end !== null && end > Date.now())) return 'Shift times cannot be in the future.';
+    if (state.shifts.some(function (x) {
+      return x.id !== id && nameKey(x.name) === nameKey(name) &&
+        start < (x.end === null ? Infinity : x.end) && (end === null ? Infinity : end) > x.start;
+    })) return 'This overlaps another shift for that worker. Correct the existing shift instead.';
+    return '';
   }
 
   function renderShifts() {
     var owner = !state.worker;
     $('ownerShifts').hidden = !owner;
+    $('shiftCorrectionPanel').hidden = !canCorrectShifts();
+    if (!canCorrectShifts()) { $('manualShiftForm').hidden = true; $('manualShiftForm').reset(); manualShiftId = null; }
     var live = $('activeList');
     if (!state.loaded) { live.innerHTML = '<li class="loading">Loading shifts…</li>'; $('noActive').hidden = true; return; }
     var all = state.shifts.filter(function (s) { return typeof s.start === 'number'; }).sort(function (a, b) { return b.start - a.start; });
@@ -1297,6 +1391,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
       var key = 'end:' + s.id, armed = state.armed === key;
       return '<li class="shift on" data-id="' + esc(s.id) + '"><div class="sh-main"><b>' + esc(s.name) + '</b><span class="sh-sub mono">Since ' + esc(clock(s.start)) + '</span></div>' +
         '<span class="sh-dur mono live-dur" data-start="' + s.start + '">' + fmtDur(Date.now() - s.start) + '</span>' +
+        (canCorrectShifts() ? '<button class="btn sm" type="button" data-act="correct">Correct times</button>' : '') +
         '<button class="btn sm' + (armed ? ' armed' : ' primary') + '" type="button" data-act="end">' + (armed ? 'Tap again to end shift' : 'End shift') + '</button></li>';
     }).join('');
 
@@ -1373,11 +1468,10 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     var list = inPeriod.filter(function (s) { return s.end; });
     $('noShifts').hidden = list.length > 0;
     $('shiftList').innerHTML = list.map(function (s) {
-      if (state.editShift === s.id) return shiftForm(s);
       var key = 'shift:' + s.id, armed = state.armed === key, isPaid = !!paid[s.id];
       return '<li class="shift" data-id="' + esc(s.id) + '"><div class="sh-main"><b>' + esc(s.name) + '</b><span class="sh-sub mono">' + esc(span(s)) + '</span></div>' +
         '<span class="sh-dur mono">' + fmtDur(shiftMs(s)) + '</span>' +
-        (isPaid ? '<span class="tag">Paid</span>' :
+        (isPaid ? '<span class="tag">Paid</span>' : !canCorrectShifts() ? '' :
           '<div class="sh-actions"><button class="btn sm" type="button" data-act="edit">Edit</button>' +
           '<button class="btn sm danger' + (armed ? ' armed' : '') + '" type="button" data-act="del">' + (armed ? 'Tap again to delete' : 'Delete') + '</button></div>') + '</li>';
     }).join('');
@@ -1448,7 +1542,9 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     var b = e.target.closest('button[data-act]'); if (!b) return;
     var id = b.closest('.order').dataset.id;
     var o = state.orders.find(function (x) { return x.id === id; }); if (!o) return;
-    if (b.dataset.act === 'toggle') {
+    if (b.dataset.act === 'print') {
+      printOrder(o);
+    } else if (b.dataset.act === 'toggle') {
       var next = o.status === 'done' ? 'open' : 'done';
       guarded(function () { return put('orders', Object.assign({}, o, { status: next })); });
     } else if (b.dataset.act === 'edit') {
@@ -1514,6 +1610,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     var b = e.target.closest('button[data-act]'); if (!b) return;
     var id = b.closest('.shift').dataset.id, key = 'end:' + id;
     var s = state.shifts.find(function (x) { return x.id === id; }); if (!s) return;
+    if (b.dataset.act === 'correct') { openShiftCorrection(s); return; }
     if (state.armed !== key) { arm(key); return; }
     disarm();
     var end = Date.now();
@@ -1559,35 +1656,37 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     guarded(function () { return remove('payments', id); }, 'Payment undone. Those hours are unpaid again.');
   });
 
-  $('shiftList').addEventListener('input', function (e) {
-    var f = e.target.dataset && e.target.dataset.f;
-    if (f && state.editDraft) state.editDraft[f] = e.target.value;
+  $('addMissedShift').addEventListener('click', function () { openShiftCorrection(null); });
+  $('cancelManualShift').addEventListener('click', function () { $('manualShiftForm').hidden = true; $('manualShiftForm').reset(); manualShiftId = null; });
+  $('manualShiftForm').addEventListener('submit', async function (e) {
+    e.preventDefault();
+    if (!canCorrectShifts() || $('saveManualShift').disabled) return;
+    var original = manualShiftId ? state.shifts.find(function (x) { return x.id === manualShiftId; }) : null;
+    if (manualShiftId && !original) { toast('This shift no longer exists.'); return; }
+    if (manualShiftId && paidSet()[manualShiftId]) { toast('Undo the payment before correcting a paid shift.'); return; }
+    var name = $('manualName').value.trim();
+    var start = new Date($('manualStart').value).getTime();
+    var end = $('manualEnd').value ? new Date($('manualEnd').value).getTime() : null;
+    var error = validateShiftCorrection(name, start, end, manualShiftId);
+    if (error) { toast(error); return; }
+    var record = Object.assign({}, original || { id: newId() }, { name: name, start: start, end: end });
+    $('saveManualShift').disabled = true;
+    try {
+      var ok = await guarded(function () { return put('shifts', record); }, 'Shift saved. Unpaid hours have been updated.');
+      if (ok) { $('manualShiftForm').hidden = true; $('manualShiftForm').reset(); manualShiftId = null; rememberName(name); }
+    } finally { $('saveManualShift').disabled = false; }
   });
-  $('shiftList').addEventListener('click', async function (e) {
+  $('shiftList').addEventListener('click', function (e) {
+    if (!canCorrectShifts()) return;
     var b = e.target.closest('button[data-act]'); if (!b) return;
     var id = b.closest('.shift').dataset.id;
-    var s = state.shifts.find(function (x) { return x.id === id; }); if (!s) return;
-    var act = b.dataset.act;
-    if (act === 'edit') {
-      state.editShift = id;
-      state.editDraft = { name: s.name, start: toInput(s.start), end: s.end ? toInput(s.end) : '' };
-      disarm(); renderShifts();
-    } else if (act === 'cancel') {
-      state.editShift = null; state.editDraft = null; renderShifts();
-    } else if (act === 'save') {
-      var d = state.editDraft || {};
-      var name = (d.name || '').trim(), st = new Date(d.start).getTime(), en = new Date(d.end).getTime();
-      if (!name) { toast('Type a name.'); return; }
-      if (!isFinite(st) || !isFinite(en)) { toast('Pick a start and an end time.'); return; }
-      if (en < st) { toast('The end cannot be before the start.'); return; }
-      var ok = await guarded(function () { return put('shifts', Object.assign({}, s, { name: name, start: st, end: en })); }, 'Shift updated');
-      if (ok) { state.editShift = null; state.editDraft = null; renderShifts(); }
-    } else {
-      var key = 'shift:' + id;
-      if (state.armed !== key) { arm(key); return; }
-      disarm();
-      guarded(function () { return remove('shifts', id); }, 'Shift deleted');
-    }
+    var s = state.shifts.find(function (x) { return x.id === id; }); if (!s || paidSet()[id]) return;
+    if (b.dataset.act === 'edit') { openShiftCorrection(s); return; }
+    if (b.dataset.act !== 'del') return;
+    var key = 'shift:' + id;
+    if (state.armed !== key) { arm(key); return; }
+    disarm();
+    guarded(function () { return remove('shifts', id); }, 'Shift deleted');
   });
   setInterval(function () {
     if (state.tab !== 'shifts' || state.auth !== 'in') return;
@@ -1610,6 +1709,9 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     else if (b.dataset.cur) prefs.currency = b.dataset.cur;
     else return;
     savePrefs(); applyTheme(); render();
+  });
+  $('receiptWidth').addEventListener('change', function () {
+    prefs.receiptWidth = this.value === '58' ? '58' : '80'; savePrefs();
   });
   $('shopName').addEventListener('input', function () {
     prefs.shopName = this.value.trim().slice(0, 30); savePrefs();
