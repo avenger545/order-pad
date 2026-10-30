@@ -70,7 +70,7 @@ body {
   background: var(--bg);
   color: var(--ink);
   font-family: var(--font-body);
-  font-size: 16px;
+  font-size: 1rem;
   line-height: 1.45;
   padding-left: max(16px, env(safe-area-inset-left, 0px));
   padding-right: max(16px, env(safe-area-inset-right, 0px));
@@ -102,7 +102,8 @@ button { cursor: pointer; }
   display: grid;
   gap: 14px;
 }
-.brand { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.brand { display: flex; align-items: center; gap: 12px; }
+.brand .date { flex: none; }
 h1 {
   font-family: var(--font-display);
   font-weight: 800;
@@ -110,6 +111,11 @@ h1 {
   letter-spacing: -0.02em;
   line-height: 1.1;
   margin: 0;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .date { font-size: 0.78rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin: 0; }
 
@@ -430,6 +436,23 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
 .pshift span:first-child { min-width: 0; overflow-wrap: anywhere; }
 .tag { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; padding: 2px 8px; border-radius: 99px; background: var(--accent-soft); color: var(--accent); justify-self: start; }
 
+#salesAmt { font-size: 1.4rem; }
+.iconbtn { flex: none; width: 42px; height: 42px; display: grid; place-items: center; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); padding: 0; }
+.iconbtn svg { width: 22px; height: 22px; display: block; }
+.sethead { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.sethead h2 { margin: 0; font-family: var(--font-display); font-size: 1.4rem; font-weight: 700; }
+.setcard { display: grid; gap: 14px; padding: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+.setcard h3 { margin: 0; font-size: 0.78rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.seg { display: flex; gap: 4px; padding: 4px; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; }
+.seg button { flex: 1; min-width: 0; min-height: 40px; border: 0; background: transparent; border-radius: 8px; font-weight: 600; color: var(--muted); }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.swatches { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.swatch { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); font-weight: 600; text-align: left; }
+.swatch[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.dots { display: flex; flex: none; }
+.dots i { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--surface); margin-left: -6px; }
+.dots i:first-child { margin-left: 0; }
+
 @media (prefers-reduced-motion: no-preference) {
   .pick, .tab, .chip, .btn { transition: background-color 0.15s, border-color 0.15s, color 0.15s; }
 }
@@ -438,6 +461,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
   .tab { font-size: 0.78rem; }
 }
 </style>
+<style id="paletteStyle"></style>
 
 </head>
 <body>
@@ -448,7 +472,10 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
 <div class="app">
   <header class="top">
     <div class="brand">
-      <h1>Order Pad</h1>
+      <button class="iconbtn" id="openSettings" type="button" aria-label="Settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/><circle cx="9" cy="6" r="2.4" fill="var(--surface)"/><circle cx="15" cy="12" r="2.4" fill="var(--surface)"/><circle cx="8" cy="18" r="2.4" fill="var(--surface)"/></svg>
+      </button>
+      <h1 id="shopTitle">Order Pad</h1>
       <p class="date mono" id="today"></p>
     </div>
     <nav class="tabs" role="tablist" aria-label="Sections">
@@ -461,6 +488,33 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
   </header>
 
   <main>
+    <section id="view-settings" aria-label="Settings" hidden>
+      <div class="sethead">
+        <h2>Settings</h2>
+        <button class="btn sm primary" id="closeSettings" type="button">Done</button>
+      </div>
+      <div class="setcard">
+        <h3>Theme</h3>
+        <div class="swatches" id="swatches"></div>
+        <div class="field"><label>Appearance</label><div class="seg" id="modeSeg"></div></div>
+        <div class="field"><label>Text size</label><div class="seg" id="sizeSeg"></div></div>
+      </div>
+      <div class="setcard">
+        <h3>Shop</h3>
+        <div class="field">
+          <label for="shopName">Shop name</label>
+          <input id="shopName" type="text" autocomplete="off" maxlength="30" placeholder="Order Pad">
+        </div>
+        <div class="field"><label>Currency</label><div class="seg" id="curSeg"></div></div>
+      </div>
+      <div class="setcard">
+        <h3>Account</h3>
+        <p class="muted" id="acctText"></p>
+        <button class="btn" id="signOut" type="button" hidden>Sign out</button>
+      </div>
+      <p class="foot">Theme, text size, shop name and currency are saved on this device only.</p>
+    </section>
+
     <section id="view-login" hidden>
       <p class="loading" id="loginWait">Checking sign-in…</p>
       <form class="loginbox" id="loginForm" hidden>
@@ -513,9 +567,9 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     <section id="view-orders" aria-labelledby="tab-orders" hidden>
       <div class="sales" id="sales">
         <div class="sales-main">
-          <span class="lbl">Sales so far</span>
-          <strong class="amt mono" id="salesAmt">0.00</strong>
-          <span class="sub" id="salesSub">0 orders</span>
+          <span class="lbl">This day so far</span>
+          <strong class="amt mono" id="salesAmt">0 orders</strong>
+          <span class="sub" id="salesSub">Nothing to close yet</span>
         </div>
         <button class="btn" id="closeDay" type="button">Close day</button>
       </div>
@@ -623,7 +677,6 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     </section>
 
     <p class="foot" id="foot" hidden></p>
-    <button class="btn sm" id="signOut" type="button" hidden>Sign out</button>
   </main>
 </div>
 <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
@@ -634,6 +687,46 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
   var FB_CFG = window.ORDERPAD_CONFIG || null;
   var FB_ON = !!(FB_CFG && FB_CFG.apiKey && FB_CFG.projectId && String(FB_CFG.apiKey).indexOf('PASTE') !== 0);
   var unsubs = [];
+  var PREF_KEY = 'orderpad.prefs';
+  var prefs = { palette: 'sunny', mode: 'auto', size: 'normal', currency: 'none', shopName: '' };
+  try {
+    var sp = JSON.parse(localStorage.getItem(PREF_KEY) || 'null');
+    if (sp && typeof sp === 'object') Object.keys(prefs).forEach(function (k) { if (typeof sp[k] === 'string') prefs[k] = sp[k]; });
+  } catch (e) {}
+  function savePrefs() { try { localStorage.setItem(PREF_KEY, JSON.stringify(prefs)); } catch (e) {} }
+  var CUR = { gel: { sym: '₾', after: true }, usd: { sym: '$' }, eur: { sym: '€' }, gbp: { sym: '£' } };
+  var STATUS_L = { 'open': '#7a5200', 'open-bg': '#ffe68a', 'danger': '#b3261e' };
+  var STATUS_D = { 'open': '#ffd54a', 'open-bg': '#4a3b0a', 'danger': '#ff8a80' };
+  function pal(name, L, D) { return { name: name, light: Object.assign({}, L, STATUS_L), dark: Object.assign({}, D, STATUS_D) }; }
+  var PALETTES = {
+    sunny: pal('Sunny',
+      { 'bg': '#fff7e0', 'surface': '#ffffff', 'ink': '#2b1a0a', 'muted': '#7a5c3e', 'line': '#f0dcae', 'accent': '#c2490a', 'accent-ink': '#ffffff', 'accent-soft': '#ffe2c2' },
+      { 'bg': '#1c1308', 'surface': '#2a1d0f', 'ink': '#fbeed5', 'muted': '#c4a67a', 'line': '#44311a', 'accent': '#ffa43a', 'accent-ink': '#2b1500', 'accent-soft': '#4a2f10' }),
+    ocean: pal('Ocean',
+      { 'bg': '#eaf4fb', 'surface': '#ffffff', 'ink': '#0d2233', 'muted': '#4f6b80', 'line': '#cfe0ec', 'accent': '#0b6fa8', 'accent-ink': '#ffffff', 'accent-soft': '#d4e9f7' },
+      { 'bg': '#0b1620', 'surface': '#14212d', 'ink': '#e6f1f9', 'muted': '#8fa9bc', 'line': '#243646', 'accent': '#4db3ee', 'accent-ink': '#04202f', 'accent-soft': '#12364d' }),
+    forest: pal('Forest',
+      { 'bg': '#edf5ee', 'surface': '#ffffff', 'ink': '#10231a', 'muted': '#56705f', 'line': '#d0e2d4', 'accent': '#1f7a43', 'accent-ink': '#ffffff', 'accent-soft': '#d5efdc' },
+      { 'bg': '#0d1a12', 'surface': '#15261b', 'ink': '#e4f3e8', 'muted': '#8fb09a', 'line': '#24402f', 'accent': '#52d17f', 'accent-ink': '#04210f', 'accent-soft': '#14391f' }),
+    berry: pal('Berry',
+      { 'bg': '#fdf0f3', 'surface': '#ffffff', 'ink': '#2a1018', 'muted': '#7d5560', 'line': '#f0d3da', 'accent': '#b5254f', 'accent-ink': '#ffffff', 'accent-soft': '#fbd9e2' },
+      { 'bg': '#1c0d12', 'surface': '#2a141b', 'ink': '#fbe8ee', 'muted': '#c9a0ad', 'line': '#4a2530', 'accent': '#ff7a9f', 'accent-ink': '#3a0716', 'accent-soft': '#4a1a28' }),
+    graphite: pal('Graphite',
+      { 'bg': '#eef0f2', 'surface': '#ffffff', 'ink': '#14181c', 'muted': '#5b6670', 'line': '#d8dde2', 'accent': '#2f3a45', 'accent-ink': '#ffffff', 'accent-soft': '#e0e5ea' },
+      { 'bg': '#101316', 'surface': '#1a1f24', 'ink': '#e9edf0', 'muted': '#98a3ad', 'line': '#2a3239', 'accent': '#cdd6de', 'accent-ink': '#12171b', 'accent-soft': '#2a323a' })
+  };
+  var ownTheme = false;
+  function cssVars(o) { return Object.keys(o).map(function (k) { return '--' + k + ':' + o[k] + ';'; }).join(''); }
+  function applyTheme() {
+    var p = PALETTES[prefs.palette] || PALETTES.sunny, root = document.documentElement;
+    if (prefs.mode === 'light' || prefs.mode === 'dark') { root.setAttribute('data-theme', prefs.mode); ownTheme = true; }
+    else if (ownTheme) { root.removeAttribute('data-theme'); ownTheme = false; }
+    document.getElementById('paletteStyle').textContent =
+      ':root{' + cssVars(p.light) + '}' +
+      '@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){' + cssVars(p.dark) + 'color-scheme:dark;}}' +
+      ':root[data-theme="dark"]{' + cssVars(p.dark) + 'color-scheme:dark;}';
+    root.style.fontSize = ({ small: '14px', normal: '16px', large: '19px' })[prefs.size] || '16px';
+  }
   var state = {
     items: [], orders: [], days: [],
     qty: {}, tab: 'new', filter: 'open', loaded: false, mode: 'pending',
@@ -650,7 +743,11 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
     });
   }
-  function money(n) { return Number(n).toFixed(2); }
+  function money(n) {
+    var s = Number(n).toFixed(2), c = CUR[prefs.currency];
+    if (!c) return s;
+    return c.after ? s + ' ' + c.sym : c.sym + s;
+  }
   function pad(n) { return String(n).padStart(3, '0'); }
   function newId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
   function clock(ts) { return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
@@ -813,7 +910,8 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     });
     $('tab-items').hidden = state.worker;
     document.querySelector('.tabs').style.gridTemplateColumns = 'repeat(' + (state.worker ? 4 : 5) + ', 1fr)';
-    document.querySelector('.tabs').hidden = state.auth !== 'in';
+    document.querySelector('.tabs').hidden = state.auth !== 'in' || state.tab === 'settings';
+    $('view-settings').hidden = state.auth !== 'in' || state.tab !== 'settings';
     $('view-login').hidden = state.auth === 'in';
     $('loginForm').hidden = state.auth !== 'out';
     $('loginWait').hidden = state.auth === 'out';
@@ -862,8 +960,8 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     var s = sums(state.orders);
     var open = state.orders.filter(function (o) { return o.status !== 'done'; }).length;
     $('sales').hidden = !state.loaded;
-    $('salesAmt').textContent = s.priced || s.count === 0 ? money(s.total) : '—';
-    $('salesSub').textContent = plural(s.count, 'order', 'orders') + (open ? ' · ' + open + ' open' : '') + (!s.priced && s.count ? ' · no prices set' : '');
+    $('salesAmt').textContent = plural(s.count, 'order', 'orders');
+    $('salesSub').textContent = s.count === 0 ? 'Nothing to close yet' : (open === 0 ? 'All done' : open + ' open · ' + (s.count - open) + ' done');
     $('closeDay').disabled = s.count === 0;
     var panel = $('closePanel');
     panel.hidden = !(state.closing && s.count > 0);
@@ -988,6 +1086,25 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     }).join('');
   }
 
+  function segHtml(attr, opts, cur) {
+    return opts.map(function (o) { return '<button type="button" data-' + attr + '="' + o[0] + '" aria-pressed="' + (cur === o[0]) + '">' + esc(o[1]) + '</button>'; }).join('');
+  }
+  function renderSettings() {
+    $('swatches').innerHTML = Object.keys(PALETTES).map(function (k) {
+      var p = PALETTES[k];
+      return '<button class="swatch" type="button" data-palette="' + k + '" aria-pressed="' + (prefs.palette === k) + '"><span class="dots">' +
+        '<i style="background:' + p.light.accent + '"></i><i style="background:' + p.light['accent-soft'] + '"></i><i style="background:' + p.dark.bg + '"></i></span><span>' + esc(p.name) + '</span></button>';
+    }).join('');
+    $('modeSeg').innerHTML = segHtml('mode', [['auto', 'Auto'], ['light', 'Light'], ['dark', 'Dark']], prefs.mode);
+    $('sizeSeg').innerHTML = segHtml('size', [['small', 'Small'], ['normal', 'Normal'], ['large', 'Large']], prefs.size);
+    $('curSeg').innerHTML = segHtml('cur', [['none', 'None'], ['gel', '₾'], ['usd', '$'], ['eur', '€'], ['gbp', '£']], prefs.currency);
+    if (document.activeElement !== $('shopName')) $('shopName').value = prefs.shopName;
+    $('shopTitle').textContent = prefs.shopName || 'Order Pad';
+    $('acctText').textContent = state.mode === 'firebase' && state.userEmail
+      ? 'Signed in as ' + state.userEmail + (state.worker ? ' (store login)' : ' (owner)')
+      : (state.mode === 'cloud' ? 'Connected through Claude.' : 'Data is stored on this device only.');
+  }
+
   function renderFoot() {
     var f = $('foot'), msg = '';
     if (state.mode === 'local') msg = 'Orders are stored on this phone only.';
@@ -1002,7 +1119,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     var valid = {};
     pickList().forEach(function (p) { valid[p.key] = 1; });
     Object.keys(state.qty).forEach(function (k) { if (!valid[k]) delete state.qty[k]; });
-    renderTabs(); renderPicker(); renderSummary(); renderSales(); renderOrders(); renderDays(); renderShifts(); renderItems(); renderFoot();
+    renderTabs(); renderPicker(); renderSummary(); renderSales(); renderOrders(); renderDays(); renderShifts(); renderItems(); renderFoot(); renderSettings();
   }
 
   /* ---------- actions ---------- */
@@ -1461,8 +1578,31 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     document.querySelectorAll('.live-dur').forEach(function (el) { el.textContent = fmtDur(Date.now() - Number(el.dataset.start)); });
   }, 20000);
 
+  $('openSettings').addEventListener('click', function () {
+    if (state.tab === 'settings') return;
+    state.prevTab = state.tab; state.tab = 'settings'; state.closing = false; disarm();
+    render(); window.scrollTo(0, 0);
+  });
+  $('closeSettings').addEventListener('click', function () {
+    state.tab = state.prevTab || 'new'; render(); window.scrollTo(0, 0);
+  });
+  $('view-settings').addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.palette) prefs.palette = b.dataset.palette;
+    else if (b.dataset.mode) prefs.mode = b.dataset.mode;
+    else if (b.dataset.size) prefs.size = b.dataset.size;
+    else if (b.dataset.cur) prefs.currency = b.dataset.cur;
+    else return;
+    savePrefs(); applyTheme(); render();
+  });
+  $('shopName').addEventListener('input', function () {
+    prefs.shopName = this.value.trim().slice(0, 30); savePrefs();
+    $('shopTitle').textContent = prefs.shopName || 'Order Pad';
+  });
+
   /* ---------- start ---------- */
-  $('today').textContent = new Date().toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' });
+  applyTheme();
+  $('today').textContent = new Date().toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' });
   render();
   function loginMsg(code) {
     if (code === 'auth/too-many-requests') return 'Too many attempts. Wait a few minutes and try again.';
@@ -1501,12 +1641,14 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
       unsubs.forEach(function (u) { try { u(); } catch (e) {} });
       unsubs = [];
       if (user) {
+        state.userEmail = user.email || '';
         state.worker = !!(FB_CFG.ownerEmail && user.email && String(user.email).toLowerCase() !== String(FB_CFG.ownerEmail).toLowerCase());
         if (state.worker && state.tab === 'items') state.tab = 'new';
         state.auth = 'in'; db = fs; state.loaded = false;
         render(); subscribe();
       } else {
-        db = null; state.auth = 'out'; state.loaded = false; state.worker = false;
+        db = null; state.auth = 'out'; state.loaded = false; state.worker = false; state.userEmail = '';
+        if (state.tab === 'settings') state.tab = state.prevTab || 'new';
         state.items = []; state.orders = []; state.days = []; state.shifts = []; state.rates = []; state.payments = []; state.rateDraft = {}; state.editShift = null; state.editDraft = null;
         state.qty = {}; state.editId = null; state.draft = null; state.closing = false;
         $('cust').value = ''; $('note').value = '';
