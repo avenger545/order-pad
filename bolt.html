@@ -1,0 +1,2235 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#fff7e0" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1c1308" media="(prefers-color-scheme: dark)">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+:root { color-scheme: light; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+/* Prevent double-tap zoom while allowing scrolling and pinch zoom. */
+html, body { touch-action: manipulation; }
+body { margin: 0; }
+.sales-channels { display:flex; gap:8px; padding:8px 12px; }
+.sales-channels a { flex:1; text-align:center; padding:10px 8px; border:1px solid var(--line); border-radius:10px; text-decoration:none; color:var(--ink); font-weight:700; }
+.sales-channels a[aria-current="page"] { background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
+.sales-channels #boltChannel[aria-current="page"] { background:#177942; color:white; border-color:#177942; }
+img { max-width: 100%; }
+[hidden] { display: none !important; }
+</style>
+<title>Order Pad</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Instrument+Sans:wght@400..700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one narrow column like a ticket pad. Sticky header with four tabs (New order, Orders, Days, Items), order slips with a dashed tear line, closed days as ledger cards. */
+:root {
+  --bg: #fff7e0;
+  --surface: #ffffff;
+  --ink: #2b1a0a;
+  --muted: #7a5c3e;
+  --line: #f0dcae;
+  --accent: #c2490a;
+  --accent-ink: #ffffff;
+  --accent-soft: #ffe2c2;
+  --open: #7a5200;
+  --open-bg: #ffe68a;
+  --danger: #b3261e;
+  --font-display: 'Bricolage Grotesque', 'Segoe UI', system-ui, sans-serif;
+  --font-body: 'Instrument Sans', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1c1308;
+    --surface: #2a1d0f;
+    --ink: #fbeed5;
+    --muted: #c4a67a;
+    --line: #44311a;
+    --accent: #ffa43a;
+    --accent-ink: #2b1500;
+    --accent-soft: #4a2f10;
+    --open: #ffd54a;
+    --open-bg: #4a3b0a;
+    --danger: #ff8a80;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #1c1308;
+  --surface: #2a1d0f;
+  --ink: #fbeed5;
+  --muted: #c4a67a;
+  --line: #44311a;
+  --accent: #ffa43a;
+  --accent-ink: #2b1500;
+  --accent-soft: #4a2f10;
+  --open: #ffd54a;
+  --open-bg: #4a3b0a;
+  --danger: #ff8a80;
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 1rem;
+  line-height: 1.45;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0 24px;
+}
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0 0 auto;
+  height: env(safe-area-inset-top, 0px);
+  z-index: 10;
+  background: var(--bg);
+}
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+button, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+[hidden] { display: none !important; }
+
+.app { max-width: 640px; margin: 0 auto; }
+
+/* Header */
+.top {
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  z-index: 5;
+  background: var(--bg);
+  padding-block: 18px 12px;
+  display: grid;
+  gap: 14px;
+}
+.brand { display: flex; align-items: center; gap: 12px; }
+.brand .date { flex: none; }
+h1 {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.75rem;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.date { font-size: 0.78rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin: 0; }
+
+.tabs {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.tab {
+  border: 0;
+  background: transparent;
+  min-height: 42px;
+  padding: 0 2px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.84rem;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+}
+.tab[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); }
+.badge {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  min-width: 18px;
+  padding: 1px 4px;
+  border-radius: 99px;
+  background: var(--open-bg);
+  color: var(--open);
+  line-height: 1.5;
+}
+.tab[aria-selected="true"] .badge { background: var(--accent-ink); color: var(--accent); }
+
+main { display: grid; gap: 16px; padding-top: 8px; }
+section { display: grid; gap: 16px; min-width: 0; align-content: start; }
+
+h2.sec {
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin: 0;
+}
+
+/* Fields */
+.field { display: grid; gap: 6px; }
+label { font-weight: 600; font-size: 0.9rem; }
+.opt { font-weight: 400; color: var(--muted); margin-left: 6px; }
+input[type="text"], input[type="search"], input[type="email"], input[type="password"], input[type="datetime-local"], input:not([type]) {
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+input::placeholder { color: var(--muted); opacity: 0.8; }
+input:focus-visible { outline-offset: 0; border-color: var(--accent); }
+
+/* Buttons */
+.btn {
+  min-height: 46px;
+  padding: 0 18px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  font-weight: 600;
+}
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.primary:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn.sm { min-height: 36px; padding: 0 12px; font-size: 0.875rem; }
+.btn.danger { color: var(--danger); }
+.btn.armed { background: var(--danger); border-color: var(--danger); color: var(--surface); }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Edit banner */
+.editbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px 10px 14px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+}
+.editbar span { min-width: 0; overflow-wrap: anywhere; }
+.editbar b { font-family: var(--font-display); font-weight: 700; }
+
+/* Pick list */
+.picker, .itemlist, .orders, .days { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.pick {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 10px 10px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.pick.on { background: var(--accent-soft); border-color: var(--accent); }
+.pk-main { min-width: 0; display: grid; }
+.pk-name { font-weight: 600; overflow-wrap: anywhere; }
+.pk-price { font-size: 0.82rem; color: var(--muted); }
+.stepper { display: flex; align-items: center; gap: 4px; flex: none; }
+.stepper button {
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  font-size: 1.25rem;
+  line-height: 1;
+}
+.pick.on .stepper button { border-color: var(--accent); }
+.stepper button:disabled { opacity: 0.35; cursor: default; }
+.stepper output { min-width: 30px; text-align: center; font-family: var(--font-mono); font-weight: 500; }
+
+.savebar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-block: 12px calc(12px + env(safe-area-inset-bottom, 0px));
+  background: var(--bg);
+  border-top: 1px solid var(--line);
+}
+.sum { display: grid; min-width: 0; }
+.sum .c { font-weight: 600; }
+.sum .t { font-size: 0.85rem; color: var(--muted); }
+
+/* Items tab */
+.add { display: grid; grid-template-columns: 1fr 110px; gap: 10px; }
+.add .btn { grid-column: 1 / -1; }
+.itemrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 10px 10px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.itemrow .nm { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.itemrow .pr { color: var(--muted); font-size: 0.85rem; display: block; }
+
+/* Sales summary + close day */
+.sales {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.sales-main { display: grid; min-width: 0; }
+.lbl { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 600; }
+.amt { font-size: 1.9rem; font-weight: 500; line-height: 1.15; }
+.sub { font-size: 0.85rem; color: var(--muted); }
+.closepanel {
+  padding: 14px;
+  border-radius: 10px;
+  background: var(--open-bg);
+  border: 1px solid var(--open);
+  display: grid;
+  gap: 12px;
+}
+.closepanel p { margin: 0; }
+.cp-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* Orders tab */
+.chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip {
+  min-height: 38px;
+  padding: 0 14px;
+  border-radius: 99px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+.chip[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+.chip .n { font-family: var(--font-mono); margin-left: 6px; font-weight: 400; }
+
+.order { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px; display: grid; gap: 12px; }
+.order.done { opacity: 0.72; }
+.order.editing { border-color: var(--accent); opacity: 1; }
+.o-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.o-id { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.o-no { color: var(--accent); font-weight: 500; font-size: 0.95rem; }
+.o-id h3 { margin: 0; font-family: var(--font-display); font-size: 1.2rem; font-weight: 700; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.pill { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; padding: 3px 9px; border-radius: 99px; flex: none; }
+.pill.open { background: var(--open-bg); color: var(--open); }
+.pill.done { background: var(--accent-soft); color: var(--accent); }
+.o-lines { list-style: none; margin: 0; padding: 12px 0 0; border-top: 1px dashed var(--line); display: grid; gap: 4px; }
+.o-lines li { display: grid; grid-template-columns: 34px 1fr auto; gap: 8px; align-items: baseline; }
+.o-lines .q { color: var(--muted); font-size: 0.9rem; }
+.o-lines .nm { overflow-wrap: anywhere; }
+.o-lines .lp { font-size: 0.9rem; color: var(--muted); }
+.o-note { margin: 0; padding: 8px 10px; background: var(--bg); border-radius: 6px; font-size: 0.92rem; overflow-wrap: anywhere; }
+.o-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.o-meta { display: grid; font-size: 0.82rem; color: var(--muted); }
+.o-meta b { color: var(--ink); font-size: 1rem; font-weight: 500; }
+.o-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* Days tab */
+.allsales {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.day { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px; display: grid; gap: 12px; }
+.d-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.d-head > div { min-width: 0; }
+.d-head h3 { margin: 0; font-family: var(--font-display); font-size: 1.2rem; font-weight: 700; letter-spacing: -0.01em; }
+.d-sub { font-size: 0.82rem; color: var(--muted); display: block; }
+.d-tot { font-size: 1.4rem; font-weight: 500; text-align: right; flex: none; }
+.d-tot small { display: block; font-size: 0.75rem; color: var(--muted); font-family: var(--font-body); }
+.d-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.d-detail { display: grid; gap: 14px; padding-top: 12px; border-top: 1px dashed var(--line); }
+.sold { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.sold li { display: grid; grid-template-columns: 40px 1fr auto; gap: 8px; align-items: baseline; }
+.sold .q { color: var(--muted); font-size: 0.9rem; }
+.sold .nm { overflow-wrap: anywhere; }
+.sold .lp { color: var(--muted); font-size: 0.9rem; }
+.d-orders { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.d-order { padding: 10px 12px; background: var(--bg); border-radius: 8px; display: grid; gap: 4px; }
+.do-head { display: flex; align-items: baseline; gap: 10px; }
+.do-head b { flex: 1; min-width: 0; overflow-wrap: anywhere; font-weight: 600; }
+.do-lines { font-size: 0.9rem; color: var(--muted); overflow-wrap: anywhere; }
+
+.empty {
+  text-align: center;
+  padding: 36px 20px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  color: var(--muted);
+  display: grid;
+  gap: 12px;
+  justify-items: center;
+}
+.empty strong { color: var(--ink); font-family: var(--font-display); font-size: 1.1rem; }
+.empty p { margin: 0; max-width: 34ch; }
+.loading { color: var(--muted); padding: 24px 0; text-align: center; list-style: none; }
+
+.foot { font-size: 0.82rem; color: var(--muted); margin: 0; text-align: center; }
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  max-width: calc(100vw - 32px);
+  background: var(--ink);
+  color: var(--bg);
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  z-index: 20;
+  text-align: center;
+}
+
+.loginbox { display: grid; gap: 14px; padding: 18px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+.login-h { font-family: var(--font-display); font-size: 1.4rem; font-weight: 700; margin: 0; }
+.login-p { margin: 0; color: var(--muted); }
+.login-err { margin: 0; padding: 10px 12px; border-radius: 8px; background: var(--open-bg); color: var(--danger); font-weight: 600; }
+#signOut { justify-self: center; }
+
+.shiftstart { display: grid; gap: 12px; padding: 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+.shifts, .hours { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.shift { display: grid; grid-template-columns: 1fr auto; gap: 8px 12px; align-items: center; padding: 12px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+.shift.on { border-color: var(--accent); background: var(--accent-soft); }
+.shift.on .btn { grid-column: 1 / -1; }
+.sh-main { display: grid; min-width: 0; }
+.sh-main b { font-weight: 600; overflow-wrap: anywhere; }
+.sh-sub { font-size: 0.82rem; color: var(--muted); }
+.sh-dur { font-weight: 500; text-align: right; }
+.sh-actions { grid-column: 1 / -1; display: flex; gap: 8px; flex-wrap: wrap; }
+.sh-form { grid-column: 1 / -1; display: grid; gap: 12px; }
+.hr { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: baseline; padding: 10px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+.hr .nm { min-width: 0; overflow-wrap: anywhere; font-weight: 600; }
+.hr .n { color: var(--muted); font-size: 0.82rem; }
+.hr b { font-weight: 500; }
+.hr.tot { background: var(--accent-soft); border-color: var(--accent); }
+.muted { color: var(--muted); margin: 0; }
+.stack { display: grid; gap: 16px; }
+.pay { display: grid; gap: 10px; padding: 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+.pay-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.pay-head b { font-family: var(--font-display); font-size: 1.15rem; font-weight: 700; overflow-wrap: anywhere; min-width: 0; }
+.pay-due { font-size: 1.4rem; font-weight: 500; }
+.pay-sub { font-size: 0.85rem; color: var(--muted); }
+.pay-rate { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: end; }
+.pay-note { margin: 0; font-size: 0.82rem; color: var(--muted); }
+.pshift { display: flex; justify-content: space-between; gap: 12px; font-size: 0.9rem; }
+.pshift span:first-child { min-width: 0; overflow-wrap: anywhere; }
+.tag { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; padding: 2px 8px; border-radius: 99px; background: var(--accent-soft); color: var(--accent); justify-self: start; }
+
+#salesAmt { font-size: 1.4rem; }
+.iconbtn { flex: none; width: 42px; height: 42px; display: grid; place-items: center; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); padding: 0; }
+.iconbtn svg { width: 22px; height: 22px; display: block; }
+.sethead { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.sethead h2 { margin: 0; font-family: var(--font-display); font-size: 1.4rem; font-weight: 700; }
+.setcard { display: grid; gap: 14px; padding: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+.setcard h3 { margin: 0; font-size: 0.78rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.seg { display: flex; gap: 4px; padding: 4px; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; }
+.seg button { flex: 1; min-width: 0; min-height: 40px; border: 0; background: transparent; border-radius: 8px; font-weight: 600; color: var(--muted); }
+.seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+.swatches { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.swatch { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); font-weight: 600; text-align: left; }
+.swatch[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.dots { display: flex; flex: none; }
+.dots i { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--surface); margin-left: -6px; }
+.dots i:first-child { margin-left: 0; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .pick, .tab, .chip, .btn { transition: background-color 0.15s, border-color 0.15s, color 0.15s; }
+}
+@media (max-width: 380px) {
+  .add { grid-template-columns: 1fr; }
+  .tab { font-size: 0.78rem; }
+}
+</style>
+<style id="paletteStyle"></style>
+
+<style>
+#thermalReceipt { display: none; }
+@media print {
+  @page { size: auto; margin: 0; }
+  html, body { background: white !important; color: black !important; margin: 0 !important; padding: 0 !important; min-width: 0 !important; }
+  body > * { display: none !important; }
+  body > #thermalReceipt { display: block !important; margin: 0; padding: 4mm 2mm 10mm; box-sizing: border-box; font: 12px/1.5 Arial, sans-serif; color: black; background: white; overflow-wrap: anywhere; }
+  #thermalReceipt * { color: black !important; background: transparent !important; box-shadow: none !important; }
+  #thermalReceipt header, #thermalReceipt footer { text-align: center; display: block; padding: 0; margin: 0; position: static; }
+  #thermalReceipt .receipt-logo { display: block; width: 34mm; max-width: 100%; height: auto; margin: 0 auto 4mm; object-fit: contain; filter: grayscale(1); break-inside: avoid; }
+  #thermalReceipt h1 { font-size: 17px; margin: 0 0 4px; }
+  #thermalReceipt p { margin: 6px 0; }
+  #thermalReceipt hr { border: 0; border-top: 1px dashed black; margin: 8px 0; }
+  #thermalReceipt table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  #thermalReceipt th, #thermalReceipt td { padding: var(--receipt-item-gap, 3mm) 0; text-align: left; vertical-align: top; }
+  #thermalReceipt th:last-child, #thermalReceipt td:last-child { width: 35%; text-align: right; }
+  #thermalReceipt td:first-child { padding-right: 5px; }
+  #thermalReceipt tr { break-inside: avoid; }
+  #thermalReceipt small { font-size: 10px; }
+  #thermalReceipt .receipt-total { display: flex; justify-content: space-between; gap: 8px; font-size: 14px; }
+  #thermalReceipt .receipt-note { white-space: pre-wrap; }
+  #thermalReceipt footer { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 4mm; line-height: 1.6; }
+}
+</style>
+</head>
+<body>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script>window.ORDERPAD_CONFIG = {"apiKey": "AIzaSyCsTiArbQIHquJM0MRHdb2_Ji1RcSP6g9g", "authDomain": "order-pad-4230d.firebaseapp.com", "projectId": "order-pad-4230d", "storageBucket": "order-pad-4230d.firebasestorage.app", "messagingSenderId": "209577902584", "appId": "1:209577902584:web:162f01ae8a12df1097560d", "ownerEmail": "danizghrayzi@gmail.com", "managerEmail": "samer@gmail.com"};</script>
+<div class="app">
+  <header class="top">
+    <div class="brand">
+      <button class="iconbtn" id="openSettings" type="button" aria-label="Settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/><circle cx="9" cy="6" r="2.4" fill="var(--surface)"/><circle cx="15" cy="12" r="2.4" fill="var(--surface)"/><circle cx="8" cy="18" r="2.4" fill="var(--surface)"/></svg>
+      </button>
+      <h1 id="shopTitle">Order Pad</h1>
+      <p class="date mono" id="today"></p>
+    </div>
+    <nav id="salesChannels" class="sales-channels" aria-label="Order channel" hidden>
+      <a id="restaurantChannel" href="./index.html">Restaurant</a>
+      <a id="boltChannel" href="./bolt.html">Bolt Food</a>
+    </nav>
+    <p id="channelHint" class="muted" style="text-align:center;margin:4px 12px 10px" hidden></p>
+    <nav class="tabs" role="tablist" aria-label="Sections">
+      <button class="tab" role="tab" id="tab-new" data-tab="new" aria-selected="true">New</button>
+      <button class="tab" role="tab" id="tab-orders" data-tab="orders" aria-selected="false">Orders <span class="badge" id="openBadge" hidden>0</span></button>
+      <button class="tab" role="tab" id="tab-days" data-tab="days" aria-selected="false">Days</button>
+      <button class="tab" role="tab" id="tab-shifts" data-tab="shifts" aria-selected="false">Shifts</button>
+      <button class="tab" role="tab" id="tab-items" data-tab="items" aria-selected="false">Items</button>
+    </nav>
+  </header>
+
+  <main>
+    <section id="view-settings" aria-label="Settings" hidden>
+      <div class="sethead">
+        <h2>Settings</h2>
+        <button class="btn sm primary" id="closeSettings" type="button">Done</button>
+      </div>
+      <div class="setcard">
+        <h3>Theme</h3>
+        <div class="swatches" id="swatches"></div>
+        <div class="field"><label>Appearance</label><div class="seg" id="modeSeg"></div></div>
+        <div class="field"><label>Text size</label><div class="seg" id="sizeSeg"></div></div>
+      </div>
+      <div class="setcard">
+        <h3>Shop</h3>
+        <p class="muted">At 00:00 Georgia time, finished orders move to Days. Unfinished orders stay active; when marked done, they move to the date they were taken. If no device is open and online, closing catches up when the app reconnects. Worker shifts continue until ended.</p>
+        <div class="field">
+          <label for="shopName">Shop name</label>
+          <input id="shopName" type="text" autocomplete="off" maxlength="30" placeholder="Order Pad">
+        </div>
+        <div class="field"><label>Currency</label><div class="seg" id="curSeg"></div></div>
+      </div>
+      <div class="setcard">
+        <h3>Receipt printer</h3>
+        <div class="field"><label for="receiptWidth">Paper width</label>
+          <select id="receiptWidth"><option value="58">58 mm</option><option value="80">80 mm</option></select>
+        </div>
+        <div class="field"><label for="receiptLogo">Restaurant logo</label>
+          <select id="receiptLogo"><option value="on">Print logo</option><option value="off">No logo</option></select>
+        </div>
+        <div class="field"><label for="receiptLogoUpload">Choose a new logo</label>
+          <input id="receiptLogoUpload" type="file" accept="image/png,image/jpeg,image/webp">
+        </div>
+        <img id="receiptLogoPreview" src="./receipt-logo.png" alt="Current receipt logo" style="display:block;width:120px;max-height:160px;object-fit:contain;background:white;border:1px solid #ddd;padding:8px;border-radius:8px">
+        <button class="btn sm" id="resetReceiptLogo" type="button">Restore Rooster Berg logo</button>
+        <p class="muted">PNG, JPG or WebP, up to 700 KB. The owner and manager can change the shared logo. Changes sync to all signed-in devices. A white or transparent background works best.</p>
+        <p class="muted" id="receiptLogoStatus" role="status" hidden></p>
+        <div class="field"><label for="receiptSpacing">Receipt spacing</label>
+          <select id="receiptSpacing"><option value="compact">Compact</option><option value="roomy">Roomy (longer receipt)</option><option value="extra">Extra space</option></select>
+        </div>
+        <div class="field"><label for="receiptFooter">Message at the bottom of receipts</label>
+          <textarea id="receiptFooter" rows="4" maxlength="500" placeholder="Thank you!&#10;Visit us again soon."></textarea>
+        </div>
+        <p class="muted">Receipt settings save automatically on this device. Use Enter for a new line; leave the message empty to print no footer message.</p>
+        <p class="muted">Choose your thermal printer in the print window. Use matching paper size, 100% scale, no margins, and turn off headers and footers.</p>
+      </div>
+      <div class="setcard">
+        <h3>Account</h3>
+        <p class="muted" id="acctText"></p>
+        <button class="btn" id="openPassword" type="button" hidden>Change password</button>
+        <form id="passwordForm" class="stack" hidden>
+          <p class="muted">Change the password for your signed-in account. Anyone sharing this login will need the new password.</p>
+          <div class="field"><label for="currentPassword">Current password</label><input id="currentPassword" type="password" autocomplete="current-password" required></div>
+          <div class="field"><label for="newPassword">New password</label><input id="newPassword" type="password" autocomplete="new-password" minlength="6" required></div>
+          <div class="field"><label for="confirmPassword">Confirm new password</label><input id="confirmPassword" type="password" autocomplete="new-password" minlength="6" required></div>
+          <p class="muted">Use at least 6 characters. A longer, unique password is better.</p>
+          <p class="login-err" id="passwordError" role="alert" hidden></p>
+          <div class="sh-actions"><button class="btn primary" id="savePassword" type="submit">Save password</button><button class="btn" id="cancelPassword" type="button">Cancel</button></div>
+        </form>
+        <p class="muted" id="passwordStatus" role="status" hidden></p>
+        <div id="ownerSessionControls" hidden>
+          <h3>App updates</h3>
+          <p class="muted">After publishing an update, sign everyone out and reload their app. This includes you. Offline devices respond when they reconnect.</p>
+          <button class="btn danger" id="logoutEveryone" type="button">Log out everyone and update</button>
+          <p class="muted" id="logoutEveryoneStatus" role="status" hidden></p>
+        </div>
+        <button class="btn" id="signOut" type="button" hidden>Sign out</button>
+      </div>
+      <p class="foot">Theme, text size, shop name, currency and receipt width are saved on this device only.</p>
+    </section>
+
+    <section id="view-login" hidden>
+      <p class="loading" id="loginWait">Checking sign-in…</p>
+      <form class="loginbox" id="loginForm" hidden>
+        <h2 class="login-h">Sign in</h2>
+        <p class="login-p">Use the shop email and password.</p>
+        <div class="field">
+          <label for="loginEmail">Email</label>
+          <input id="loginEmail" type="email" autocomplete="username" inputmode="email" autocapitalize="none">
+        </div>
+        <div class="field">
+          <label for="loginPass">Password</label>
+          <input id="loginPass" type="password" autocomplete="current-password">
+        </div>
+        <p class="login-err" id="loginErr" role="alert" hidden></p>
+        <button class="btn primary" id="loginBtn" type="submit">Sign in</button>
+      </form>
+    </section>
+
+    <section id="view-new" aria-labelledby="tab-new">
+      <div class="editbar" id="editBar" hidden>
+        <span>Editing order <b class="mono" id="editNo"></b></span>
+        <button class="btn sm" id="cancelEdit" type="button">Cancel</button>
+      </div>
+      <div class="field">
+        <label for="cust">Customer name</label>
+        <input id="cust" type="text" autocomplete="off" placeholder="e.g. Nino" maxlength="80">
+      </div>
+      <div>
+        <h2 class="sec">Pick items</h2>
+        <ul class="picker" id="picker" style="margin-top:8px"></ul>
+        <div class="empty" id="noItems" hidden style="margin-top:8px">
+          <strong>No items yet</strong>
+          <p id="noItemsText">Add what you sell first, then you can take orders.</p>
+          <button class="btn primary" id="goItems" type="button">Add items</button>
+        </div>
+      </div>
+      <div class="field">
+        <label for="note">Note <span class="opt">optional</span></label>
+        <input id="note" type="text" autocomplete="off" placeholder="e.g. No onions, pick up at 6" maxlength="200">
+      </div>
+      <div class="savebar">
+        <div class="sum">
+          <span class="c" id="sumCount">No items picked</span>
+          <span class="t mono" id="sumTotal"></span>
+        </div>
+        <button class="btn primary" id="saveOrder" type="button" disabled>Save order</button>
+      </div>
+    </section>
+
+    <section id="view-orders" aria-labelledby="tab-orders" hidden>
+      <div class="sales" id="sales">
+        <div class="sales-main">
+          <span class="lbl">This day so far</span>
+          <strong class="amt mono" id="salesAmt">0 orders</strong>
+          <span class="sub" id="salesSub">Nothing to close yet</span>
+        </div>
+        <button class="btn" id="closeDay" type="button">Close day</button>
+      </div>
+      <div class="closepanel" id="closePanel" hidden>
+        <p id="closeText"></p>
+        <div class="cp-actions">
+          <button class="btn primary" id="closeYes" type="button">Close day</button>
+          <button class="btn" id="closeNo" type="button">Keep open</button>
+        </div>
+      </div>
+      <div class="chips" id="chips"></div>
+      <ul class="orders" id="orders"></ul>
+      <div class="empty" id="noOrders" hidden></div>
+    </section>
+
+    <section id="view-days" aria-labelledby="tab-days" hidden>
+      <div class="allsales" id="allSales" hidden>
+        <div class="sales-main">
+          <span class="lbl">All closed days</span>
+          <strong class="amt mono" id="allAmt">0.00</strong>
+          <span class="sub" id="allSub"></span>
+        </div>
+      </div>
+      <ul class="days" id="dayList"></ul>
+      <div class="empty" id="noDays" hidden>
+        <strong>No closed days yet</strong>
+        <p>When you close a day, its orders and total sold are saved here.</p>
+        <button class="btn primary" type="button" data-go="orders">Go to orders</button>
+      </div>
+    </section>
+
+    <section id="view-shifts" aria-labelledby="tab-shifts" hidden>
+      <div class="shiftstart">
+        <div class="field">
+          <label for="shiftName">Start a shift</label>
+          <input id="shiftName" type="text" autocomplete="off" placeholder="Your name" maxlength="60">
+        </div>
+        <div class="chips" id="nameChips"></div>
+        <button class="btn primary" id="startShift" type="button">Start shift</button>
+      </div>
+      <div>
+        <h2 class="sec" style="margin-bottom:8px">On shift now</h2>
+        <ul class="shifts" id="activeList"></ul>
+        <p class="muted" id="noActive">Nobody is on shift.</p>
+      </div>
+      <div class="setcard" id="shiftCorrectionPanel" hidden>
+        <h3>Owner: shift corrections</h3>
+        <button class="btn sm" id="addMissedShift" type="button">Add missed shift</button>
+        <form id="manualShiftForm" class="stack" hidden>
+          <h3 id="manualShiftTitle">Add missed shift</h3>
+          <div class="field"><label for="manualName">Worker name</label><input id="manualName" maxlength="60" required></div>
+          <div class="field"><label for="manualStart">Actual start date and time</label><input id="manualStart" type="datetime-local" required></div>
+          <div class="field"><label for="manualEnd">Actual end date and time (optional)</label><input id="manualEnd" type="datetime-local"></div>
+          <p class="muted">Leave the end empty if the worker is still on shift. Times use this device’s local time.</p>
+          <div class="sh-actions"><button class="btn primary" id="saveManualShift" type="submit">Save shift</button><button class="btn" id="cancelManualShift" type="button">Cancel</button></div>
+        </form>
+      </div>
+      <div class="stack" id="ownerShifts" hidden>
+        <div class="chips" id="shiftViews"></div>
+        <div class="stack" id="pv-pay">
+          <div class="sales" id="payTotalBox">
+            <div class="sales-main">
+              <span class="lbl">Total to pay</span>
+              <strong class="amt mono" id="payTotal">0.00</strong>
+              <span class="sub" id="paySub"></span>
+            </div>
+          </div>
+          <ul class="shifts" id="payList"></ul>
+          <div class="empty" id="noPay" hidden>
+            <strong>No workers yet</strong>
+            <p>Workers appear here after their first shift.</p>
+          </div>
+        </div>
+        <div class="stack" id="pv-log" hidden>
+          <div>
+            <h2 class="sec" style="margin-bottom:8px">Hours worked</h2>
+            <div class="chips" id="periodChips" style="margin-bottom:8px"></div>
+            <ul class="hours" id="hoursList"></ul>
+          </div>
+          <div>
+            <h2 class="sec" style="margin-bottom:8px">Shift log</h2>
+            <ul class="shifts" id="shiftList"></ul>
+            <div class="empty" id="noShifts" hidden>
+              <strong>No finished shifts</strong>
+              <p>No finished shifts in this period.</p>
+            </div>
+          </div>
+        </div>
+        <div class="stack" id="pv-paid" hidden>
+          <ul class="days" id="paidList"></ul>
+          <div class="empty" id="noPaid" hidden>
+            <strong>No payments yet</strong>
+            <p>When you mark a worker as paid, the payment and the hours it covered are saved here.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="view-items" aria-labelledby="tab-items" hidden>
+      <form class="add" id="addForm" autocomplete="off">
+        <div class="field">
+          <label for="itemName">Item name</label>
+          <input id="itemName" type="text" placeholder="e.g. Cheese bread" maxlength="80">
+        </div>
+        <div class="field">
+          <label for="itemPrice">Price <span class="opt">optional</span></label>
+          <input id="itemPrice" type="text" inputmode="decimal" placeholder="0.00" maxlength="12">
+        </div>
+        <button class="btn primary" type="submit">Add item</button>
+      </form>
+      <h2 class="sec" id="itemsHead">Your items</h2>
+      <ul class="itemlist" id="itemList"></ul>
+      <div class="empty" id="noItemList" hidden>
+        <strong>Your item list is empty</strong>
+        <p>Add your first item above. You can change the list any time.</p>
+      </div>
+    </section>
+
+    <p class="foot" id="foot" hidden></p>
+  </main>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var FB_CFG = window.ORDERPAD_CONFIG || null;
+  var FB_ON = !!(FB_CFG && FB_CFG.apiKey && FB_CFG.projectId && String(FB_CFG.apiKey).indexOf('PASTE') !== 0);
+  var unsubs = [];
+  var SALES_CHANNEL = /\/bolt\.html$/.test(window.location.pathname) ? 'bolt' : 'restaurant';
+  var OTHER_CHANNEL = SALES_CHANNEL === 'bolt' ? 'restaurant' : 'bolt';
+  var otherChannelOrders = [];
+  function salesCollection(name, channel) {
+    var selected = channel || SALES_CHANNEL;
+    if (selected === 'bolt' && ['items', 'orders', 'days'].indexOf(name) >= 0) return 'bolt' + name.charAt(0).toUpperCase() + name.slice(1);
+    return name;
+  }
+  var PREF_KEY = 'orderpad.prefs';
+  var customReceiptLogo = '', sharedLogoEnabled = true, sharedLogoReady = false, sharedLogoSaving = false;
+  var prefs = { palette: 'sunny', mode: 'auto', size: 'normal', currency: 'none', shopName: '', receiptWidth: '80', receiptSpacing: 'roomy', receiptFooter: 'Thank you!', receiptLogo: 'on' };
+  try {
+    var sp = JSON.parse(localStorage.getItem(PREF_KEY) || 'null');
+    if (sp && typeof sp === 'object') Object.keys(prefs).forEach(function (k) { if (typeof sp[k] === 'string') prefs[k] = sp[k]; });
+  } catch (e) {}
+  function savePrefs() { try { localStorage.setItem(PREF_KEY, JSON.stringify(prefs)); } catch (e) {} }
+  var CUR = { gel: { sym: '₾', after: true }, usd: { sym: '$' }, eur: { sym: '€' }, gbp: { sym: '£' } };
+  var STATUS_L = { 'open': '#7a5200', 'open-bg': '#ffe68a', 'danger': '#b3261e' };
+  var STATUS_D = { 'open': '#ffd54a', 'open-bg': '#4a3b0a', 'danger': '#ff8a80' };
+  function pal(name, L, D) { return { name: name, light: Object.assign({}, L, STATUS_L), dark: Object.assign({}, D, STATUS_D) }; }
+  var PALETTES = {
+    sunny: pal('Sunny',
+      { 'bg': '#fff7e0', 'surface': '#ffffff', 'ink': '#2b1a0a', 'muted': '#7a5c3e', 'line': '#f0dcae', 'accent': '#c2490a', 'accent-ink': '#ffffff', 'accent-soft': '#ffe2c2' },
+      { 'bg': '#1c1308', 'surface': '#2a1d0f', 'ink': '#fbeed5', 'muted': '#c4a67a', 'line': '#44311a', 'accent': '#ffa43a', 'accent-ink': '#2b1500', 'accent-soft': '#4a2f10' }),
+    ocean: pal('Ocean',
+      { 'bg': '#eaf4fb', 'surface': '#ffffff', 'ink': '#0d2233', 'muted': '#4f6b80', 'line': '#cfe0ec', 'accent': '#0b6fa8', 'accent-ink': '#ffffff', 'accent-soft': '#d4e9f7' },
+      { 'bg': '#0b1620', 'surface': '#14212d', 'ink': '#e6f1f9', 'muted': '#8fa9bc', 'line': '#243646', 'accent': '#4db3ee', 'accent-ink': '#04202f', 'accent-soft': '#12364d' }),
+    forest: pal('Forest',
+      { 'bg': '#edf5ee', 'surface': '#ffffff', 'ink': '#10231a', 'muted': '#56705f', 'line': '#d0e2d4', 'accent': '#1f7a43', 'accent-ink': '#ffffff', 'accent-soft': '#d5efdc' },
+      { 'bg': '#0d1a12', 'surface': '#15261b', 'ink': '#e4f3e8', 'muted': '#8fb09a', 'line': '#24402f', 'accent': '#52d17f', 'accent-ink': '#04210f', 'accent-soft': '#14391f' }),
+    berry: pal('Berry',
+      { 'bg': '#fdf0f3', 'surface': '#ffffff', 'ink': '#2a1018', 'muted': '#7d5560', 'line': '#f0d3da', 'accent': '#b5254f', 'accent-ink': '#ffffff', 'accent-soft': '#fbd9e2' },
+      { 'bg': '#1c0d12', 'surface': '#2a141b', 'ink': '#fbe8ee', 'muted': '#c9a0ad', 'line': '#4a2530', 'accent': '#ff7a9f', 'accent-ink': '#3a0716', 'accent-soft': '#4a1a28' }),
+    graphite: pal('Graphite',
+      { 'bg': '#eef0f2', 'surface': '#ffffff', 'ink': '#14181c', 'muted': '#5b6670', 'line': '#d8dde2', 'accent': '#2f3a45', 'accent-ink': '#ffffff', 'accent-soft': '#e0e5ea' },
+      { 'bg': '#101316', 'surface': '#1a1f24', 'ink': '#e9edf0', 'muted': '#98a3ad', 'line': '#2a3239', 'accent': '#cdd6de', 'accent-ink': '#12171b', 'accent-soft': '#2a323a' })
+  };
+  var ownTheme = false;
+  function cssVars(o) { return Object.keys(o).map(function (k) { return '--' + k + ':' + o[k] + ';'; }).join(''); }
+  function applyTheme() {
+    var p = PALETTES[prefs.palette] || PALETTES.sunny, root = document.documentElement;
+    if (prefs.mode === 'light' || prefs.mode === 'dark') { root.setAttribute('data-theme', prefs.mode); ownTheme = true; }
+    else if (ownTheme) { root.removeAttribute('data-theme'); ownTheme = false; }
+    document.getElementById('paletteStyle').textContent =
+      ':root{' + cssVars(p.light) + '}' +
+      '@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){' + cssVars(p.dark) + 'color-scheme:dark;}}' +
+      ':root[data-theme="dark"]{' + cssVars(p.dark) + 'color-scheme:dark;}';
+    root.style.fontSize = ({ small: '14px', normal: '16px', large: '19px' })[prefs.size] || '16px';
+  }
+  var state = {
+    items: [], orders: [], days: [],
+    qty: {}, tab: 'new', filter: 'open', loaded: false, mode: 'pending',
+    armed: null, editId: null, draft: null, closing: false, openDays: {}, auth: FB_ON ? 'checking' : 'in', worker: false, manager: false,
+    shifts: [], shiftPeriod: 'week', editShift: null, editDraft: null,
+    rates: [], payments: [], shiftView: 'pay', rateDraft: {}, openPays: {}
+  };
+  var db = null;
+  var LS = SALES_CHANNEL === 'bolt' ? 'orderpad.bolt.v1' : 'orderpad.v1';
+  var armTimer = null, toastTimer = null;
+
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function money(n) {
+    var s = Number(n).toFixed(2), c = CUR[prefs.currency];
+    if (!c) return s;
+    return c.after ? s + ' ' + c.sym : c.sym + s;
+  }
+  function pad(n) { return String(n).padStart(3, '0'); }
+  function newId() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
+  function clock(ts) { return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
+  function dayName(ts) { return new Date(ts).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' }); }
+  function when(ts) {
+    var d = new Date(ts);
+    if (d.toDateString() === new Date().toDateString()) return clock(ts);
+    return d.toLocaleDateString([], { day: 'numeric', month: 'short' }) + ' · ' + clock(ts);
+  }
+  function toast(msg) {
+    var el = $('toast');
+    el.textContent = msg;
+    el.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { el.hidden = true; }, 2800);
+  }
+  function sums(list) {
+    var total = 0, priced = false;
+    list.forEach(function (o) {
+      if (typeof o.total === 'number') { total += o.total; priced = true; }
+    });
+    return { count: list.length, total: Math.round(total * 100) / 100, priced: priced };
+  }
+  function plural(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
+  function byNew(a, b) { return (b.createdAt || 0) - (a.createdAt || 0); }
+
+  /* ---------- storage ---------- */
+  function lsLoad() {
+    try {
+      var j = JSON.parse(localStorage.getItem(LS) || 'null');
+      if (j) { state.items = j.items || []; state.orders = j.orders || []; state.days = j.days || []; state.shifts = j.shifts || []; state.rates = j.rates || []; state.payments = j.payments || []; }
+    } catch (e) {}
+  }
+  function lsSave() {
+    try { localStorage.setItem(LS, JSON.stringify({ items: state.items, orders: state.orders, days: state.days, shifts: state.shifts, rates: state.rates, payments: state.payments })); } catch (e) {}
+  }
+  function watchWrite(p) {
+    p.catch(function (e) {
+      toast(e && e.code === 'permission-denied'
+        ? 'Not saved: not allowed. Check the Firestore rules and that this device clock is right.'
+        : 'Could not sync the last change.');
+    });
+  }
+  async function put(coll, obj) {
+    var id = obj.id, data = Object.assign({}, obj);
+    delete data.id;
+    if (db) {
+      var w = db.collection(salesCollection(coll)).doc(id).set(data);
+      if (state.mode === 'firebase') watchWrite(w); else await w;
+    } else {
+      var arr = state[coll], i = arr.findIndex(function (x) { return x.id === id; });
+      if (i >= 0) arr[i] = obj; else arr.push(obj);
+      lsSave(); render();
+    }
+  }
+  async function remove(coll, id) {
+    if (db) {
+      var w2 = db.collection(salesCollection(coll)).doc(id).delete();
+      if (state.mode === 'firebase') watchWrite(w2); else await w2;
+    } else {
+      state[coll] = state[coll].filter(function (x) { return x.id !== id; });
+      lsSave(); render();
+    }
+  }
+  async function guarded(fn, okMsg) {
+    try { await fn(); if (okMsg) toast(okMsg); return true; }
+    catch (e) {
+      toast('Could not save. Check your connection and try again.');
+      return false;
+    }
+  }
+
+  function fromSnap(snap) {
+    return snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
+  }
+  function canManageReceiptLogo() {
+    if (state.auth !== 'in' || !state.userEmail || !FB_CFG) return false;
+    var email = state.userEmail.toLowerCase();
+    return email === String(FB_CFG.ownerEmail || '').toLowerCase() ||
+      email === String(FB_CFG.managerEmail || '').toLowerCase();
+  }
+  function subscribeReceiptBranding() {
+    unsubs.push(db.collection('appControl').doc('receiptBranding').onSnapshot({ includeMetadataChanges: true }, function (snap) {
+      if (snap.metadata.hasPendingWrites || (!snap.exists && snap.metadata.fromCache)) return;
+      var data = snap.exists ? snap.data() : {};
+      customReceiptLogo = isReceiptLogoData(data.logo) ? data.logo : '';
+      sharedLogoEnabled = data.enabled !== false;
+      sharedLogoReady = true;
+      renderSettings();
+    }, function () {
+      sharedLogoReady = false;
+      $('receiptLogoStatus').textContent = 'Cannot load shared logo settings. Ask the owner to publish the updated Firebase rules, then reload.';
+      $('receiptLogoStatus').hidden = false;
+      renderSettings();
+    }));
+  }
+  async function saveSharedReceiptLogo(logo, enabled) {
+    if (!canManageReceiptLogo() || !sharedLogoReady || state.mode !== 'firebase' || !db) throw new Error('The owner and manager can change the shared logo after it loads.');
+    if (logo !== '' && !isReceiptLogoData(logo)) throw new Error('Choose a valid PNG, JPG or WebP logo.');
+    if (!navigator.onLine) throw new Error('Connect to the internet to change the logo on all devices.');
+    await db.runTransaction(async function (transaction) {
+      transaction.set(db.collection('appControl').doc('receiptBranding'), { logo: logo, enabled: !!enabled });
+    });
+    customReceiptLogo = logo; sharedLogoEnabled = !!enabled;
+  }
+  function sharedLogoError(error) {
+    return error && error.code === 'permission-denied' ? 'Permission denied. Publish the updated Firebase rules and sign in as owner or manager.' : (error.message || 'Could not save the shared logo. Try again.');
+  }
+  function subscribe() {
+    if (state.mode === 'firebase') subscribeReceiptBranding();
+    var got = { items: false, orders: false, days: false, shifts: false, workers: false, payments: false };
+    var limited = state.mode === 'firebase' && state.worker;
+    function done() { state.loaded = got.items && got.orders && got.days && got.shifts && got.workers && got.payments; render(); if (state.loaded) queueAutoClose(); }
+    function fail(e) { state.loaded = true; render(); toast(e && e.code === 'permission-denied' ? 'This login is not allowed to read the data. Check the Firestore rules.' : 'Could not load your saved data.'); }
+    unsubs.push(db.collection(salesCollection('items')).onSnapshot(function (s) { state.items = fromSnap(s); got.items = true; done(); }, fail));
+    unsubs.push(db.collection(salesCollection('orders')).onSnapshot(function (s) { state.orders = fromSnap(s); got.orders = true; done(); }, fail));
+    unsubs.push(db.collection(salesCollection('days')).onSnapshot(function (s) { state.days = fromSnap(s); got.days = true; done(); }, fail));
+    unsubs.push(db.collection(salesCollection('orders', OTHER_CHANNEL)).onSnapshot(function (snap) { otherChannelOrders = fromSnap(snap); queueAutoClose(); }, function () { toast('Could not load the other order channel. Publish the updated Firebase rules and refresh.'); }));
+    var sq = db.collection('shifts');
+    if (limited) sq = sq.where('end', '==', null);
+    unsubs.push(sq.onSnapshot(function (s) { state.shifts = fromSnap(s); got.shifts = true; done(); }, fail));
+    if (limited) { got.workers = true; got.payments = true; }
+    else {
+      unsubs.push(db.collection('workers').onSnapshot(function (s) { state.rates = fromSnap(s); got.workers = true; done(); }, fail));
+      unsubs.push(db.collection('payments').onSnapshot(function (s) { state.payments = fromSnap(s); got.payments = true; done(); }, fail));
+    }
+  }
+
+  /* ---------- arming (two-step delete, no dialogs) ---------- */
+  function arm(key) {
+    state.armed = key;
+    clearTimeout(armTimer);
+    armTimer = setTimeout(function () { state.armed = null; render(); }, 3000);
+    render();
+  }
+  function disarm() { state.armed = null; clearTimeout(armTimer); }
+
+  /* ---------- pick list (items, plus lines of an order being edited) ---------- */
+  function sortedItems() { return state.items.slice().sort(function (a, b) { return (a.createdAt || 0) - (b.createdAt || 0); }); }
+  function pickList() {
+    var list = sortedItems().map(function (i) {
+      return { key: i.id, name: i.name, price: typeof i.price === 'number' ? i.price : null };
+    });
+    if (state.editId) {
+      var o = state.orders.find(function (x) { return x.id === state.editId; });
+      if (o) {
+        (o.lines || []).forEach(function (l, idx) {
+          var m = list.find(function (p) { return p.name === l.name && !p.gone; });
+          var price = typeof l.price === 'number' ? l.price : null;
+          if (m) { if (!m.fromOrder) { m.price = price; m.fromOrder = true; } }
+          else list.push({ key: 'x:' + idx, name: l.name, price: price, gone: true });
+        });
+      }
+    }
+    return list;
+  }
+  function pickedLines() {
+    return pickList().filter(function (p) { return (state.qty[p.key] || 0) > 0; });
+  }
+
+  /* ---------- editing ---------- */
+  function startEdit(id) {
+    var o = state.orders.find(function (x) { return x.id === id; });
+    if (!o) return;
+    if (!state.editId) state.draft = { cust: $('cust').value, note: $('note').value, qty: state.qty };
+    state.editId = id;
+    state.qty = {};
+    var list = pickList();
+    (o.lines || []).forEach(function (l) {
+      var p = list.find(function (p) { return p.name === l.name && state.qty[p.key] === undefined; });
+      if (p) state.qty[p.key] = l.qty;
+    });
+    $('cust').value = o.customer || '';
+    $('note').value = o.note || '';
+    state.tab = 'new';
+    state.closing = false;
+    disarm();
+    render();
+    window.scrollTo(0, 0);
+  }
+  function endEdit() {
+    var d = state.draft;
+    state.editId = null;
+    state.draft = null;
+    state.qty = d ? d.qty : {};
+    $('cust').value = d ? d.cust : '';
+    $('note').value = d ? d.note : '';
+  }
+
+  /* ---------- rendering ---------- */
+  function renderTabs() {
+    $('salesChannels').hidden = state.auth !== 'in' || state.tab === 'settings';
+    $('restaurantChannel').setAttribute('aria-current', SALES_CHANNEL === 'restaurant' ? 'page' : 'false');
+    $('boltChannel').setAttribute('aria-current', SALES_CHANNEL === 'bolt' ? 'page' : 'false');
+    $('channelHint').hidden = state.auth !== 'in' || state.tab === 'settings';
+    $('channelHint').textContent = SALES_CHANNEL === 'bolt' ? 'Bolt Food · separate menu, orders and daily totals' : 'Restaurant orders';
+    $('tab-items').textContent = SALES_CHANNEL === 'bolt' ? 'Bolt menu' : 'Items';
+    ['new', 'orders', 'days', 'shifts', 'items'].forEach(function (t) {
+      $('tab-' + t).setAttribute('aria-selected', String(state.tab === t));
+      $('view-' + t).hidden = state.auth !== 'in' || state.tab !== t || (t === 'items' && state.worker);
+    });
+    $('tab-items').hidden = state.worker;
+    document.querySelector('.tabs').style.gridTemplateColumns = 'repeat(' + (state.worker ? 4 : 5) + ', 1fr)';
+    document.querySelector('.tabs').hidden = state.auth !== 'in' || state.tab === 'settings';
+    $('view-settings').hidden = state.auth !== 'in' || state.tab !== 'settings';
+    $('view-login').hidden = state.auth === 'in';
+    $('loginForm').hidden = state.auth !== 'out';
+    $('loginWait').hidden = state.auth === 'out';
+    $('loginWait').textContent = state.auth === 'error' ? 'Could not load the sign-in service. Connect to the internet and reload the page.' : 'Checking sign-in…';
+    $('tab-new').textContent = state.editId ? 'Editing' : 'New';
+    var open = state.orders.filter(function (o) { return o.status !== 'done'; }).length;
+    $('openBadge').textContent = open;
+    $('openBadge').hidden = open === 0;
+  }
+
+  function renderSummary() {
+    var picked = pickedLines(), count = 0, total = 0, priced = false;
+    picked.forEach(function (p) {
+      var q = state.qty[p.key]; count += q;
+      if (typeof p.price === 'number') { total += q * p.price; priced = true; }
+    });
+    $('sumCount').textContent = count === 0 ? 'No items picked' : plural(count, 'item', 'items');
+    $('sumTotal').textContent = priced ? 'Total ' + money(total) : '';
+    $('saveOrder').disabled = !($('cust').value.trim() && count > 0);
+    $('saveOrder').textContent = state.editId ? 'Save changes' : 'Save order';
+    var o = state.editId && state.orders.find(function (x) { return x.id === state.editId; });
+    $('editBar').hidden = !o;
+    if (o) $('editNo').textContent = '#' + pad(o.no || 0);
+  }
+  function renderPicker() {
+    var ul = $('picker');
+    $('noItems').hidden = !(state.loaded && state.items.length === 0 && !state.editId);
+    $('goItems').hidden = state.worker;
+    $('noItemsText').textContent = state.worker ? 'No items yet. Ask the owner to add the items.' : 'Add what you sell first, then you can take orders.';
+    if (!state.loaded) { ul.innerHTML = '<li class="loading">Loading your items…</li>'; return; }
+    ul.innerHTML = pickList().map(function (p) {
+      var q = state.qty[p.key] || 0;
+      var price = typeof p.price === 'number' ? '<span class="pk-price mono">' + money(p.price) + (p.gone ? ' · no longer on your list' : '') + '</span>'
+        : (p.gone ? '<span class="pk-price">No longer on your list</span>' : '');
+      return '<li class="pick' + (q > 0 ? ' on' : '') + '" data-id="' + esc(p.key) + '">' +
+        '<div class="pk-main"><span class="pk-name">' + esc(p.name) + '</span>' + price + '</div>' +
+        '<div class="stepper">' +
+        '<button type="button" data-act="dec" aria-label="Remove one ' + esc(p.name) + '"' + (q === 0 ? ' disabled' : '') + '>−</button>' +
+        '<output aria-live="off">' + q + '</output>' +
+        '<button type="button" data-act="inc" aria-label="Add one ' + esc(p.name) + '">+</button>' +
+        '</div></li>';
+    }).join('');
+  }
+
+  function renderSales() {
+    var s = sums(state.orders);
+    var open = state.orders.filter(function (o) { return o.status !== 'done'; }).length;
+    $('sales').hidden = !state.loaded;
+    $('salesAmt').textContent = plural(s.count, 'order', 'orders');
+    $('salesSub').textContent = s.count === 0 ? 'Nothing to close yet' : (open === 0 ? 'All done' : open + ' open · ' + (s.count - open) + ' done');
+    $('closeDay').disabled = s.count === open || dayCloseBusy;
+    var panel = $('closePanel');
+    panel.hidden = !(state.closing && s.count > 0);
+    if (!panel.hidden) {
+      var completed = sums(state.orders.filter(function (o) { return o.status === 'done'; }));
+      var txt = 'Archive ' + plural(completed.count, 'finished order', 'finished orders') + (completed.priced ? ' totaling ' + money(completed.total) : '') + '? ';
+      if (open) txt += plural(open, 'unfinished order stays', 'unfinished orders stay') + ' in the active list. ';
+      txt += 'Earlier orders are saved under their original date in Days.';
+      $('closeText').textContent = txt;
+    }
+  }
+
+  function renderOrders() {
+    var all = state.orders.slice().sort(byNew);
+    var open = all.filter(function (o) { return o.status !== 'done'; });
+    var done = all.filter(function (o) { return o.status === 'done'; });
+    var chips = [['open', 'Open', open.length], ['done', 'Done', done.length], ['all', 'All', all.length]];
+    $('chips').innerHTML = chips.map(function (c) {
+      return '<button class="chip" type="button" data-filter="' + c[0] + '" aria-pressed="' + (state.filter === c[0]) + '">' +
+        c[1] + '<span class="n">' + c[2] + '</span></button>';
+    }).join('');
+
+    var list = state.filter === 'open' ? open : state.filter === 'done' ? done : all;
+    var ul = $('orders'), empty = $('noOrders');
+    if (!state.loaded) { ul.innerHTML = '<li class="loading">Loading your orders…</li>'; empty.hidden = true; return; }
+    empty.hidden = list.length > 0;
+    if (list.length === 0) {
+      empty.innerHTML = all.length === 0
+        ? '<strong>No orders yet</strong><p>Orders you save appear here, newest first.</p><button class="btn primary" type="button" data-go="new">Take an order</button>'
+        : '<strong>Nothing here</strong><p>' + (state.filter === 'open' ? 'Every order is marked done.' : 'No orders are marked done yet.') + '</p>';
+    }
+    ul.innerHTML = list.map(function (o) {
+      var isDone = o.status === 'done';
+      var lines = (o.lines || []).map(function (l) {
+        var lp = typeof l.price === 'number' ? '<span class="lp mono">' + money(l.price * l.qty) + '</span>' : '<span></span>';
+        return '<li><span class="q mono">' + l.qty + '×</span><span class="nm">' + esc(l.name) + '</span>' + lp + '</li>';
+      }).join('');
+      var key = 'order:' + o.id, armed = state.armed === key;
+      return '<li class="order' + (isDone ? ' done' : '') + '" data-id="' + esc(o.id) + '">' +
+        '<div class="o-head"><div class="o-id"><span class="o-no mono">#' + pad(o.no || 0) + '</span><h3>' + esc(o.customer || 'No name') + '</h3></div>' +
+        '<span class="pill ' + (isDone ? 'done' : 'open') + '">' + (isDone ? 'Done' : 'Open') + '</span></div>' +
+        (businessDateKey(o.createdAt) && businessDateKey(o.createdAt) < businessDateKey(Date.now()) ? '<p class="o-note">From ' + esc(businessDateKey(o.createdAt)) + ' · moves to that day when marked done</p>' : '') +
+        '<ul class="o-lines">' + lines + '</ul>' +
+        (o.note ? '<p class="o-note">' + esc(o.note) + '</p>' : '') +
+        '<div class="o-foot"><div class="o-meta"><span class="mono">' + esc(when(o.createdAt || Date.now())) + (o.editedAt ? ' · edited ' + esc(clock(o.editedAt)) : '') + '</span>' +
+        (typeof o.total === 'number' ? '<span>Total <b class="mono">' + money(o.total) + '</b></span>' : '') + '</div>' +
+        '<div class="o-actions">' +
+        '<button class="btn sm" type="button" data-act="print">Print receipt</button>' +
+        '<button class="btn sm' + (isDone ? '' : ' primary') + '" type="button" data-act="toggle">' + (isDone ? 'Reopen' : 'Mark done') + '</button>' +
+        '<button class="btn sm" type="button" data-act="edit">Edit</button>' +
+        '<button class="btn sm danger' + (armed ? ' armed' : '') + '" type="button" data-act="del">' + (armed ? 'Tap again to delete' : 'Delete') + '</button>' +
+        '</div></div></li>';
+    }).join('');
+  }
+
+  function isReceiptLogoData(value) {
+    return typeof value === 'string' && value.length <= 1000000 && /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(value);
+  }
+  function receiptLogoSource() { return customReceiptLogo || './receipt-logo.png'; }
+  function receiptLogoFileError(file) {
+    if (!file || ['image/png', 'image/jpeg', 'image/webp'].indexOf(file.type) < 0) return 'Choose a PNG, JPG or WebP image.';
+    if (!file.size || file.size > 700 * 1024) return 'Choose an image up to 700 KB.';
+    return '';
+  }
+  function readReceiptLogo(file) {
+    return new Promise(function (resolve, reject) {
+      var reader = new FileReader();
+      reader.onerror = function () { reject(new Error('Could not read this image. Choose it again.')); };
+      reader.onload = function () {
+        var data = reader.result;
+        if (!isReceiptLogoData(data)) { reject(new Error('This image format is not supported.')); return; }
+        var img = new Image();
+        img.onerror = function () { reject(new Error('This file could not be opened as an image.')); };
+        img.onload = function () {
+          if (!img.naturalWidth || !img.naturalHeight || img.naturalWidth * img.naturalHeight > 16000000) {
+            reject(new Error('Choose an image with smaller dimensions (up to 16 megapixels).')); return;
+          }
+          resolve(data);
+        };
+        img.src = data;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function receiptHtml(o) {
+    var lines = o.lines || [];
+    var allPriced = lines.length > 0 && lines.every(function (l) { return typeof l.price === 'number'; });
+    return '<header>' + (sharedLogoEnabled ? '<img class="receipt-logo" src="' + esc(receiptLogoSource()) + '" alt="Restaurant logo">' : '') + '<h1>' + esc(prefs.shopName || 'Rooster Berg') + '</h1><p>' + (SALES_CHANNEL === 'bolt' ? 'BOLT FOOD ORDER' : 'ORDER RECEIPT') + '</p></header>' +
+      '<p><b>Order #' + esc(pad(o.no || 0)) + '</b><br>' +
+      (o.createdAt ? esc(new Date(o.createdAt).toLocaleString()) + '<br>' : '') +
+      'Customer: ' + esc(o.customer || 'No name') + '</p><hr>' +
+      '<table><thead><tr><th>Item</th><th>Amount</th></tr></thead><tbody>' +
+      lines.map(function (l) {
+        var priced = typeof l.price === 'number';
+        return '<tr><td>' + esc(l.name) + '<br><small>' + esc(l.qty) + ' × ' +
+          (priced ? esc(money(l.price)) : 'No price') + '</small></td><td>' +
+          (priced ? esc(money(l.price * l.qty)) : '—') + '</td></tr>';
+      }).join('') + '</tbody></table><hr>' +
+      (typeof o.total === 'number' ? '<div class="receipt-total"><b>' + (allPriced ? 'Total' : 'Priced items total') + '</b><b>' + esc(money(o.total)) + '</b></div>' : '<p>Total not set</p>') +
+      (o.note ? '<hr><p class="receipt-note">Note: ' + esc(o.note) + '</p>' : '') +
+      (prefs.receiptFooter.trim() ? '<hr><footer>' + esc(prefs.receiptFooter) + '</footer>' : '');
+  }
+
+  function waitForReceiptLogo(img) {
+    if (!img) return Promise.resolve();
+    if (img.complete) return img.naturalWidth > 0 ? Promise.resolve() : Promise.reject(new Error('Logo unavailable'));
+    return new Promise(function (resolve, reject) {
+      var timer = setTimeout(function () { finish(new Error('Logo timed out')); }, 10000);
+      function finish(error) {
+        clearTimeout(timer); img.onload = null; img.onerror = null;
+        if (error) reject(error); else resolve();
+      }
+      img.onload = function () { finish(); };
+      img.onerror = function () { finish(new Error('Logo unavailable')); };
+    });
+  }
+  var receiptPrinting = false;
+  async function printOrder(o) {
+    if (receiptPrinting) return;
+    if (state.mode === 'firebase' && !sharedLogoReady) { toast('The shared logo is still loading. Check your connection and Firebase rules, then retry.'); return; }
+    receiptPrinting = true;
+    var receipt = document.getElementById('thermalReceipt');
+    if (!receipt) {
+      receipt = document.createElement('section'); receipt.id = 'thermalReceipt';
+      document.body.appendChild(receipt);
+    }
+    receipt.style.width = prefs.receiptWidth === '58' ? '48mm' : '70mm';
+    receipt.style.setProperty('--receipt-item-gap', ({ compact: '1mm', roomy: '3mm', extra: '5mm' })[prefs.receiptSpacing] || '3mm');
+    receipt.innerHTML = receiptHtml(o);
+    try {
+      await waitForReceiptLogo(receipt.querySelector('img'));
+      window.print();
+    } catch (e) {
+      toast('Could not prepare the receipt. Choose the logo again in Settings, or turn off the logo and retry.');
+    } finally { receiptPrinting = false; }
+  }
+
+  function dayStart(d) {
+    var t = (d.orders || []).reduce(function (m, o) { return Math.min(m, o.createdAt || m); }, d.closedAt || Date.now());
+    return t;
+  }
+  function renderDays() {
+    var days = state.days.slice().sort(function (a, b) { return (b.closedAt || 0) - (a.closedAt || 0); });
+    var ul = $('dayList');
+    $('noDays').hidden = !(state.loaded && days.length === 0);
+    $('allSales').hidden = !(state.loaded && days.length > 0);
+    if (!state.loaded) { ul.innerHTML = '<li class="loading">Loading your days…</li>'; return; }
+
+    var orderCount = 0, total = 0, priced = false;
+    days.forEach(function (d) {
+      orderCount += d.count || 0;
+      if (typeof d.total === 'number') { total += d.total; priced = true; }
+    });
+    $('allAmt').textContent = priced ? money(total) : '—';
+    $('allSub').textContent = plural(days.length, 'day', 'days') + ' · ' + plural(orderCount, 'order', 'orders');
+
+    ul.innerHTML = days.map(function (d) {
+      var start = d.businessDate ? Date.parse(d.businessDate + 'T12:00:00+04:00') : dayStart(d), closed = d.closedAt || start;
+      var sameDay = new Date(start).toDateString() === new Date(closed).toDateString();
+      var closedTxt = 'Closed ' + (sameDay ? '' : dayName(closed) + ', ') + clock(closed);
+      var key = 'day:' + d.id, armed = state.armed === key, isOpen = !!state.openDays[d.id];
+      var detail = '';
+      if (isOpen) {
+        var orders = (d.orders || []).slice().sort(function (a, b) { return (a.no || 0) - (b.no || 0); });
+        var agg = {}, order = [];
+        orders.forEach(function (o) {
+          (o.lines || []).forEach(function (l) {
+            if (!agg[l.name]) { agg[l.name] = { qty: 0, amt: 0, priced: false }; order.push(l.name); }
+            agg[l.name].qty += l.qty;
+            if (typeof l.price === 'number') { agg[l.name].amt += l.qty * l.price; agg[l.name].priced = true; }
+          });
+        });
+        order.sort(function (a, b) { return agg[b].qty - agg[a].qty; });
+        var sold = order.map(function (n) {
+          var a = agg[n];
+          return '<li><span class="q mono">' + a.qty + '×</span><span class="nm">' + esc(n) + '</span><span class="lp mono">' + (a.priced ? money(a.amt) : '') + '</span></li>';
+        }).join('');
+        var ords = orders.map(function (o) {
+          var ls = (o.lines || []).map(function (l) { return l.qty + '× ' + esc(l.name); }).join(' · ');
+          return '<li class="d-order"><div class="do-head"><span class="o-no mono">#' + pad(o.no || 0) + '</span><b>' + esc(o.customer || 'No name') + '</b>' +
+            (typeof o.total === 'number' ? '<span class="mono">' + money(o.total) + '</span>' : '') + '</div>' +
+            '<div class="do-lines">' + ls + '</div>' + (o.note ? '<div class="do-lines">Note: ' + esc(o.note) + '</div>' : '') + '</li>';
+        }).join('');
+        detail = '<div class="d-detail"><div><h2 class="sec" style="margin-bottom:8px">Items sold</h2><ul class="sold">' + sold + '</ul></div>' +
+          '<div><h2 class="sec" style="margin-bottom:8px">Orders</h2><ul class="d-orders">' + ords + '</ul></div></div>';
+      }
+      return '<li class="day" data-id="' + esc(d.id) + '">' +
+        '<div class="d-head"><div><h3>' + esc(dayName(start)) + '</h3><span class="d-sub mono">' + esc(closedTxt) + '</span></div>' +
+        '<div class="d-tot mono">' + (typeof d.total === 'number' ? money(d.total) : '—') + '<small>' + plural(d.count || 0, 'order', 'orders') + '</small></div></div>' +
+        '<div class="d-actions">' +
+        '<button class="btn sm" type="button" data-act="view" aria-expanded="' + isOpen + '">' + (isOpen ? 'Hide details' : 'View details') + '</button>' +
+        ((state.worker || state.manager) ? '' : '<button class="btn sm danger' + (armed ? ' armed' : '') + '" type="button" data-act="del">' + (armed ? 'Tap again to delete' : 'Delete day') + '</button>') +
+        '</div>' + detail + '</li>';
+    }).join('');
+  }
+
+  function renderItems() {
+    var ul = $('itemList');
+    $('noItemList').hidden = !(state.loaded && state.items.length === 0);
+    $('itemsHead').hidden = state.items.length === 0;
+    if (!state.loaded) { ul.innerHTML = '<li class="loading">Loading your items…</li>'; return; }
+    ul.innerHTML = sortedItems().map(function (i) {
+      var key = 'item:' + i.id, armed = state.armed === key;
+      var price = typeof i.price === 'number' ? '<span class="pr mono">' + money(i.price) + '</span>' : '<span class="pr">No price</span>';
+      return '<li class="itemrow" data-id="' + esc(i.id) + '"><div class="nm">' + esc(i.name) + price + '</div>' +
+        '<button class="btn sm" type="button" data-act="edit">Edit</button>' +
+        '<button class="btn sm danger' + (armed ? ' armed' : '') + '" type="button" data-act="del">' + (armed ? 'Tap again to remove' : 'Remove') + '</button></li>';
+    }).join('');
+  }
+
+  function segHtml(attr, opts, cur) {
+    return opts.map(function (o) { return '<button type="button" data-' + attr + '="' + o[0] + '" aria-pressed="' + (cur === o[0]) + '">' + esc(o[1]) + '</button>'; }).join('');
+  }
+  function renderSettings() {
+    $('swatches').innerHTML = Object.keys(PALETTES).map(function (k) {
+      var p = PALETTES[k];
+      return '<button class="swatch" type="button" data-palette="' + k + '" aria-pressed="' + (prefs.palette === k) + '"><span class="dots">' +
+        '<i style="background:' + p.light.accent + '"></i><i style="background:' + p.light['accent-soft'] + '"></i><i style="background:' + p.dark.bg + '"></i></span><span>' + esc(p.name) + '</span></button>';
+    }).join('');
+    $('modeSeg').innerHTML = segHtml('mode', [['auto', 'Auto'], ['light', 'Light'], ['dark', 'Dark']], prefs.mode);
+    $('sizeSeg').innerHTML = segHtml('size', [['small', 'Small'], ['normal', 'Normal'], ['large', 'Large']], prefs.size);
+    $('curSeg').innerHTML = segHtml('cur', [['none', 'None'], ['gel', '₾'], ['usd', '$'], ['eur', '€'], ['gbp', '£']], prefs.currency);
+    if (document.activeElement !== $('shopName')) $('shopName').value = prefs.shopName;
+    $('shopTitle').textContent = prefs.shopName || 'Order Pad';
+    var logoPreview = $('receiptLogoPreview');
+    if (logoPreview.getAttribute('src') !== receiptLogoSource()) logoPreview.src = receiptLogoSource();
+    $('receiptLogo').value = sharedLogoEnabled ? 'on' : 'off';
+    var canBrand = canManageReceiptLogo() && sharedLogoReady && !sharedLogoSaving;
+    $('receiptLogo').disabled = !canBrand;
+    $('receiptLogoUpload').disabled = !canBrand;
+    $('resetReceiptLogo').disabled = !canBrand;
+    $('receiptWidth').value = prefs.receiptWidth === '58' ? '58' : '80';
+    $('receiptSpacing').value = ['compact', 'roomy', 'extra'].indexOf(prefs.receiptSpacing) >= 0 ? prefs.receiptSpacing : 'roomy';
+    if (document.activeElement !== $('receiptFooter')) $('receiptFooter').value = prefs.receiptFooter;
+    $('acctText').textContent = state.mode === 'firebase' && state.userEmail
+      ? 'Signed in as ' + state.userEmail + (state.worker ? ' (store login)' : (state.manager ? ' (manager)' : ' (owner)'))
+      : (state.mode === 'cloud' ? 'Connected through Claude.' : 'Data is stored on this device only.');
+  }
+
+  function renderFoot() {
+    var f = $('foot'), msg = '';
+    if (state.mode === 'local') msg = 'Orders are stored on this phone only.';
+    else if (state.mode === 'firebase' && state.auth === 'in' && navigator.onLine === false) msg = 'You are offline. Changes are kept on this device and sync when you are back online.';
+    f.hidden = !msg;
+    f.textContent = msg;
+    $('signOut').hidden = !(state.mode === 'firebase' && state.auth === 'in');
+    $('openPassword').hidden = $('signOut').hidden;
+    $('ownerSessionControls').hidden = !canCorrectShifts();
+  }
+
+  function render() {
+    if (state.editId && state.loaded && !state.orders.some(function (o) { return o.id === state.editId; })) endEdit();
+    var valid = {};
+    pickList().forEach(function (p) { valid[p.key] = 1; });
+    Object.keys(state.qty).forEach(function (k) { if (!valid[k]) delete state.qty[k]; });
+    renderTabs(); renderPicker(); renderSummary(); renderSales(); renderOrders(); renderDays(); renderShifts(); renderItems(); renderFoot(); renderSettings();
+  }
+
+  /* ---------- actions ---------- */
+  function setTab(t) {
+    disarm();
+    state.closing = false;
+    state.tab = t;
+    render();
+    window.scrollTo(0, 0);
+  }
+
+  async function saveOrder() {
+    var customer = $('cust').value.trim();
+    var picked = pickedLines();
+    if (!customer || picked.length === 0) return;
+    var total = 0, priced = false;
+    var lines = picked.map(function (p) {
+      var q = state.qty[p.key];
+      var line = { name: p.name, qty: q, price: typeof p.price === 'number' ? p.price : null };
+      if (line.price !== null) { total += q * line.price; priced = true; }
+      return line;
+    });
+    var fields = {
+      customer: customer, lines: lines, note: $('note').value.trim(),
+      total: priced ? Math.round(total * 100) / 100 : null
+    };
+    $('saveOrder').disabled = true;
+
+    if (state.editId) {
+      var o = state.orders.find(function (x) { return x.id === state.editId; });
+      if (!o) { endEdit(); render(); return; }
+      var upd = Object.assign({}, o, fields, { editedAt: Date.now() });
+      var okEdit = await guarded(function () { return put('orders', upd); }, 'Order #' + pad(o.no || 0) + ' updated');
+      if (okEdit) {
+        endEdit();
+        if (state.filter !== 'all') state.filter = o.status === 'done' ? 'done' : 'open';
+        setTab('orders');
+      } else { renderSummary(); }
+      return;
+    }
+
+    var todayKey = businessDateKey(Date.now());
+    var no = state.orders.filter(function (x) { return businessDateKey(x.createdAt) === todayKey; }).reduce(function (m, x) { return Math.max(m, x.no || 0); }, 0) + 1;
+    var order = Object.assign({ id: newId(), no: no, status: 'open', createdAt: Date.now() }, fields);
+    var ok = await guarded(function () { return put('orders', order); }, 'Order #' + pad(no) + ' saved for ' + customer);
+    if (ok) {
+      state.qty = {}; $('cust').value = ''; $('note').value = '';
+      state.filter = 'open'; setTab('orders');
+    } else { renderSummary(); }
+  }
+
+  // Georgia business dates are independent of each device's display timezone.
+  function businessDateKey(timestamp) {
+    if (typeof timestamp !== 'number' || !Number.isFinite(timestamp)) return '';
+    var parts = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Tbilisi', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(timestamp));
+    var date = {}; parts.forEach(function (p) { date[p.type] = p.value; });
+    return date.year + '-' + date.month + '-' + date.day;
+  }
+  function midnightAfterBusinessDate(key) {
+    // Asia/Tbilisi uses UTC+04:00.
+    return Date.parse(key + 'T00:00:00+04:00') + 86400000;
+  }
+  function dueOrderGroups(orders, now) {
+    var today = businessDateKey(now), groups = {};
+    orders.forEach(function (o) {
+      var key = businessDateKey(o.createdAt);
+      if (o.status === 'done' && key && key < today) (groups[key] || (groups[key] = [])).push(o);
+    });
+    return groups;
+  }
+  function archiveChunks(orders) {
+    var chunks = [], chunk = [], bytes = 0;
+    orders.forEach(function (o) {
+      var size = new TextEncoder().encode(JSON.stringify(o)).length;
+      if (size > 700000) throw new Error('One order is too large to archive automatically.');
+      if (chunk.length && (chunk.length >= 150 || bytes + size > 700000)) { chunks.push(chunk); chunk = []; bytes = 0; }
+      chunk.push(o); bytes += size;
+    });
+    if (chunk.length) chunks.push(chunk);
+    return chunks;
+  }
+  async function archiveOrderChunk(candidates, closedAt, dateKey, automatic, channel) {
+    var archiveDb = db, manualId = automatic ? null : newId();
+    var refs = candidates.map(function (o) { return archiveDb.collection(salesCollection('orders', channel)).doc(o.id); });
+    return archiveDb.runTransaction(async function (tx) {
+      var snapshots = await Promise.all(refs.map(function (ref) { return tx.get(ref); }));
+      var list = [], removeRefs = [];
+      snapshots.forEach(function (snap, i) {
+        if (!snap.exists) return;
+        var order = Object.assign({}, snap.data(), { id: snap.id });
+        if (order.status !== 'done') return;
+        if (dateKey && businessDateKey(order.createdAt) !== dateKey) return;
+        list.push(order); removeRefs.push(refs[i]);
+      });
+      if (!list.length) return 0;
+      var dayRef, record;
+      for (var part = 1; part <= 100; part++) {
+        var archiveId = automatic ? 'auto-' + dateKey + (part === 1 ? '' : '-' + part) : manualId;
+        dayRef = archiveDb.collection(salesCollection('days', channel)).doc(archiveId);
+        var daySnap = await tx.get(dayRef);
+        if (!automatic && daySnap.exists) throw new Error('Archive ID already exists. Retry.');
+        var prior = daySnap.exists ? daySnap.data() : null;
+        if (prior && (prior.automatic !== true || prior.businessDate !== dateKey)) throw new Error('Unexpected day archive. Ask the owner to check Days.');
+        var previous = prior ? prior.orders || [] : [];
+        var combined = previous.concat(list).sort(function (a, b) { return (a.createdAt || 0) - (b.createdAt || 0); });
+        var totals = sums(combined);
+        record = { closedAt: prior ? prior.closedAt : closedAt, count: totals.count, total: totals.priced ? totals.total : null, orders: combined, automatic: automatic };
+        if (dateKey) record.businessDate = dateKey;
+        if (new TextEncoder().encode(JSON.stringify(record)).length <= 950000) break;
+        if (!automatic || !previous.length || part === 100) throw new Error('Archive is too large. Ask the owner to check Days.');
+      }
+      tx.set(dayRef, record);
+      removeRefs.forEach(function (ref) { tx.delete(ref); });
+      return list.length;
+    });
+  }
+  var dayCloseBusy = false, autoCloseTimer = null, midnightTimer = null, autoCloseErrorAt = 0;
+  function queueAutoClose() {
+    if (autoCloseTimer) return;
+    autoCloseTimer = setTimeout(function () { autoCloseTimer = null; autoCloseDays(); }, 500);
+  }
+  function scheduleMidnightClose() {
+    clearTimeout(midnightTimer);
+    var now = Date.now(), next = midnightAfterBusinessDate(businessDateKey(now));
+    midnightTimer = setTimeout(function () { queueAutoClose(); scheduleMidnightClose(); }, Math.max(1000, next - now + 300));
+  }
+  async function autoCloseDays() {
+    if (dayCloseBusy || state.mode !== 'firebase' || state.auth !== 'in' || !state.loaded || !db || !navigator.onLine) return;
+    var sources = [{ channel: SALES_CHANNEL, orders: state.orders }, { channel: OTHER_CHANNEL, orders: otherChannelOrders }];
+    if (!sources.some(function (source) { return Object.keys(dueOrderGroups(source.orders, Date.now())).length; })) return;
+    dayCloseBusy = true; renderSales();
+    try {
+      var count = 0;
+      for (var c = 0; c < sources.length; c++) {
+        var source = sources[c], groups = dueOrderGroups(source.orders, Date.now()), keys = Object.keys(groups).sort();
+        for (var k = 0; k < keys.length; k++) {
+          var key = keys[k], chunks = archiveChunks(groups[key]);
+          for (var i = 0; i < chunks.length; i++) {
+            if (state.auth !== 'in' || !navigator.onLine) return;
+            count += await archiveOrderChunk(chunks[i], midnightAfterBusinessDate(key), key, true, source.channel);
+          }
+        }
+      }
+      if (count) toast('Finished orders saved under their original date in Days. Unfinished orders stay active.');
+    } catch (e) {
+      if (Date.now() - autoCloseErrorAt > 60000) { toast('Automatic closing could not finish. Orders remain saved; the app will retry.'); autoCloseErrorAt = Date.now(); }
+    } finally { dayCloseBusy = false; renderSales(); }
+  }
+  async function closeDay() {
+    if (!state.orders.some(function (o) { return o.status === 'done'; }) || dayCloseBusy) return;
+    if (state.mode !== 'firebase') { toast('Automatic day closing requires the online app.'); return; }
+    if (!navigator.onLine) { toast('Connect to the internet to close the day safely.'); return; }
+    dayCloseBusy = true; $('closeYes').disabled = true;
+    var list = state.orders.filter(function (o) { return o.status === 'done'; });
+    try {
+      var groups = {}, count = 0, today = businessDateKey(Date.now());
+      list.forEach(function (o) { var key = businessDateKey(o.createdAt) || today; (groups[key] || (groups[key] = [])).push(o); });
+      var keys = Object.keys(groups).sort();
+      for (var k = 0; k < keys.length; k++) {
+        var key = keys[k], chunks = archiveChunks(groups[key]), earlier = key < today;
+        for (var i = 0; i < chunks.length; i++) count += await archiveOrderChunk(chunks[i], earlier ? midnightAfterBusinessDate(key) : Date.now(), key, earlier);
+      }
+      state.closing = false;
+      toast(count ? 'Day closed. Orders are saved in Days.' : 'These orders were already closed on another device.');
+      setTab('days');
+    } catch (e) { toast('Could not finish closing. Any remaining orders are still saved; try again.'); }
+    finally { dayCloseBusy = false; $('closeYes').disabled = false; renderSales(); }
+  }
+
+  async function addItem(e) {
+    e.preventDefault();
+    var name = $('itemName').value.trim();
+    var raw = $('itemPrice').value.trim().replace(',', '.');
+    if (!name) { toast('Type an item name first.'); $('itemName').focus(); return; }
+    var price = null;
+    if (raw !== '') {
+      price = Number(raw);
+      if (!isFinite(price) || price < 0) { toast('Price must be a number like 4.50.'); $('itemPrice').focus(); return; }
+      price = Math.round(price * 100) / 100;
+    }
+    var item = { id: newId(), name: name, price: price, createdAt: Date.now() };
+    var ok = await guarded(function () { return put('items', item); }, name + ' added');
+    if (ok) { $('itemName').value = ''; $('itemPrice').value = ''; $('itemName').focus(); }
+  }
+
+  /* ---------- shifts ---------- */
+  function pad2(n) { return String(n).padStart(2, '0'); }
+  function fmtMin(m) { m = Math.max(0, Math.round(m)); return Math.floor(m / 60) + 'h ' + pad2(m % 60) + 'm'; }
+  function fmtDur(ms) { return fmtMin(ms / 60000); }
+  function periodStart(p) {
+    var d = new Date(); d.setHours(0, 0, 0, 0);
+    if (p === 'today') return d.getTime();
+    if (p === 'week') { d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d.getTime(); }
+    if (p === 'month') { d.setDate(1); return d.getTime(); }
+    return 0;
+  }
+  function toInput(ts) {
+    var d = new Date(ts);
+    return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) + 'T' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+  }
+  function nameKey(n) { return String(n).trim().toLowerCase(); }
+  function shiftMs(s) { return (s.end || Date.now()) - s.start; }
+  function span(s) {
+    var a = s.start, b = s.end;
+    var same = b && new Date(a).toDateString() === new Date(b).toDateString();
+    return dayName(a) + ' · ' + clock(a) + ' – ' + (b ? (same ? clock(b) : dayName(b) + ' ' + clock(b)) : 'now');
+  }
+  function rateId(key) {
+    var bytes = new TextEncoder().encode(key), h = 'w_';
+    for (var i = 0; i < bytes.length; i++) h += (bytes[i] < 16 ? '0' : '') + bytes[i].toString(16);
+    return h;
+  }
+  function paidSet() {
+    var set = {};
+    state.payments.forEach(function (p) { (p.shifts || []).forEach(function (s) { set[s.id] = p.id; }); });
+    return set;
+  }
+  function rateOf(key) {
+    var r = state.rates.find(function (x) { return nameKey(x.name) === key; });
+    return r && typeof r.rate === 'number' ? r.rate : null;
+  }
+  function workerGroups() {
+    var paid = paidSet(), g = {}, keys = [];
+    function get(name) {
+      var k = nameKey(name);
+      if (!g[k]) { g[k] = { key: k, name: String(name).trim(), shifts: [], min: 0, active: false }; keys.push(k); }
+      return g[k];
+    }
+    state.shifts.forEach(function (s) {
+      if (typeof s.start !== 'number') return;
+      var x = get(s.name);
+      if (!s.end) x.active = true;
+      else if (!paid[s.id]) { x.shifts.push(s); x.min += Math.round((s.end - s.start) / 60000); }
+    });
+    state.rates.forEach(function (r) { get(r.name); });
+    keys.sort(function (a, b) { return (g[b].min - g[a].min) || g[a].name.localeCompare(g[b].name); });
+    return keys.map(function (k) { return g[k]; });
+  }
+  function savedNames() {
+    try { var l = JSON.parse(localStorage.getItem('orderpad.names') || '[]'); return Array.isArray(l) ? l : []; } catch (e) { return []; }
+  }
+  function rememberName(n) {
+    try {
+      var l = savedNames().filter(function (x) { return nameKey(x) !== nameKey(n); });
+      l.unshift(n);
+      localStorage.setItem('orderpad.names', JSON.stringify(l.slice(0, 6)));
+    } catch (e) {}
+  }
+  function canCorrectShifts() {
+    return state.auth === 'in' && !!state.userEmail &&
+      state.userEmail.toLowerCase() === String(FB_CFG.ownerEmail || '').toLowerCase();
+  }
+  var manualShiftId = null;
+  function openShiftCorrection(shift) {
+    if (!canCorrectShifts()) return;
+    if (shift && paidSet()[shift.id]) { toast('Undo the payment before correcting a paid shift.'); return; }
+    manualShiftId = shift ? shift.id : null;
+    $('manualShiftTitle').textContent = shift ? 'Correct shift times' : 'Add missed shift';
+    $('manualName').value = shift ? shift.name : $('shiftName').value.trim();
+    $('manualStart').value = shift ? toInput(shift.start) : '';
+    $('manualEnd').value = shift && shift.end !== null ? toInput(shift.end) : '';
+    $('manualShiftForm').hidden = false;
+    $('shiftCorrectionPanel').scrollIntoView({ block: 'center' });
+    $('manualName').focus();
+  }
+  function validateShiftCorrection(name, start, end, id) {
+    if (!name || name.length > 60) return 'Enter a worker name (up to 60 characters).';
+    if (!isFinite(start) || (end !== null && !isFinite(end))) return 'Choose valid dates and times.';
+    if (end !== null && end < start) return 'The end cannot be before the start.';
+    if (start > Date.now() || (end !== null && end > Date.now())) return 'Shift times cannot be in the future.';
+    if (state.shifts.some(function (x) {
+      return x.id !== id && nameKey(x.name) === nameKey(name) &&
+        start < (x.end === null ? Infinity : x.end) && (end === null ? Infinity : end) > x.start;
+    })) return 'This overlaps another shift for that worker. Correct the existing shift instead.';
+    return '';
+  }
+
+  function renderShifts() {
+    var owner = !state.worker;
+    $('ownerShifts').hidden = !owner;
+    $('shiftCorrectionPanel').hidden = !canCorrectShifts();
+    if (!canCorrectShifts()) { $('manualShiftForm').hidden = true; $('manualShiftForm').reset(); manualShiftId = null; }
+    var live = $('activeList');
+    if (!state.loaded) { live.innerHTML = '<li class="loading">Loading shifts…</li>'; $('noActive').hidden = true; return; }
+    var all = state.shifts.filter(function (s) { return typeof s.start === 'number'; }).sort(function (a, b) { return b.start - a.start; });
+    var active = all.filter(function (s) { return !s.end; }).sort(function (a, b) { return a.start - b.start; });
+    $('noActive').hidden = active.length > 0;
+    live.innerHTML = active.map(function (s) {
+      var key = 'end:' + s.id, armed = state.armed === key;
+      return '<li class="shift on" data-id="' + esc(s.id) + '"><div class="sh-main"><b>' + esc(s.name) + '</b><span class="sh-sub mono">Since ' + esc(clock(s.start)) + '</span></div>' +
+        '<span class="sh-dur mono live-dur" data-start="' + s.start + '">' + fmtDur(Date.now() - s.start) + '</span>' +
+        (canCorrectShifts() ? '<button class="btn sm" type="button" data-act="correct">Correct times</button>' : '') +
+        '<button class="btn sm' + (armed ? ' armed' : ' primary') + '" type="button" data-act="end">' + (armed ? 'Tap again to end shift' : 'End shift') + '</button></li>';
+    }).join('');
+
+    var seen = {}, names = [];
+    savedNames().concat(owner ? all.map(function (s) { return s.name; }) : []).forEach(function (n) {
+      var k = nameKey(n);
+      if (!seen[k] && names.length < 6) { seen[k] = 1; names.push(n); }
+    });
+    $('nameChips').innerHTML = names.map(function (n) { return '<button class="chip" type="button" data-name="' + esc(n) + '">' + esc(n) + '</button>'; }).join('');
+    if (!owner) return;
+
+    var views = [['pay', 'To pay'], ['log', 'Shift log'], ['paid', 'Payments']];
+    $('shiftViews').innerHTML = views.map(function (v) {
+      return '<button class="chip" type="button" data-view="' + v[0] + '" aria-pressed="' + (state.shiftView === v[0]) + '">' + v[1] + '</button>';
+    }).join('');
+    $('pv-pay').hidden = state.shiftView !== 'pay';
+    $('pv-log').hidden = state.shiftView !== 'log';
+    $('pv-paid').hidden = state.shiftView !== 'paid';
+    if (state.shiftView === 'pay') renderPay();
+    else if (state.shiftView === 'log') renderLog(all);
+    else renderPaid();
+  }
+
+  function renderPay() {
+    var ae = document.activeElement;
+    if (ae && ae.dataset && ae.dataset.rate && $('payList').contains(ae)) return;
+    var gs = workerGroups(), totalDue = 0, owing = 0;
+    $('noPay').hidden = gs.length > 0;
+    $('payList').innerHTML = gs.map(function (g, i) {
+      var rate = rateOf(g.key);
+      var due = rate === null ? null : Math.round(g.min / 60 * rate * 100) / 100;
+      if (due !== null) { totalDue += due; if (g.min > 0) owing++; }
+      var draft = state.rateDraft[g.key];
+      var val = draft !== undefined ? draft : (rate === null ? '' : String(rate));
+      var key = 'pay:' + g.key, armed = state.armed === key;
+      var canPay = g.min > 0 && rate !== null;
+      var label = armed ? 'Tap again to confirm ' + money(due) + ' paid' : (rate === null ? 'Set a rate first' : (g.min > 0 ? 'Mark as paid' : 'Nothing to pay'));
+      return '<li class="pay" data-key="' + esc(g.key) + '">' +
+        '<div class="pay-head"><b>' + esc(g.name) + '</b><span class="pay-due mono">' + (due === null ? '—' : money(due)) + '</span></div>' +
+        '<div class="pay-sub mono">' + fmtMin(g.min) + ' unpaid · ' + plural(g.shifts.length, 'shift', 'shifts') + (g.active ? ' · on shift now' : '') + '</div>' +
+        '<div class="pay-rate"><div class="field"><label for="rate-' + i + '">Rate per hour</label>' +
+        '<input id="rate-' + i + '" type="text" inputmode="decimal" data-rate="1" placeholder="0.00" maxlength="10" value="' + esc(val) + '"></div>' +
+        '<button class="btn sm" type="button" data-act="saverate">Save rate</button></div>' +
+        '<button class="btn sm' + (armed ? ' armed' : ' primary') + '" type="button" data-act="pay"' + (canPay ? '' : ' disabled') + '>' + label + '</button>' +
+        (g.active ? '<p class="pay-note">A shift in progress is counted after it ends.</p>' : '') + '</li>';
+    }).join('');
+    $('payTotal').textContent = money(totalDue);
+    $('paySub').textContent = owing === 0 ? 'Nobody to pay right now' : 'For ' + plural(owing, 'worker', 'workers');
+    $('payTotalBox').hidden = gs.length === 0;
+  }
+
+  function renderLog(all) {
+    var from = periodStart(state.shiftPeriod), paid = paidSet();
+    var inPeriod = all.filter(function (s) { return s.start >= from; });
+    var periods = [['today', 'Today'], ['week', 'This week'], ['month', 'This month'], ['all', 'All']];
+    $('periodChips').innerHTML = periods.map(function (p) {
+      return '<button class="chip" type="button" data-period="' + p[0] + '" aria-pressed="' + (state.shiftPeriod === p[0]) + '">' + p[1] + '</button>';
+    }).join('');
+    var agg = {}, keys = [], total = 0;
+    inPeriod.forEach(function (s) {
+      var k = nameKey(s.name);
+      if (!agg[k]) { agg[k] = { name: s.name, ms: 0, n: 0 }; keys.push(k); }
+      agg[k].ms += shiftMs(s); agg[k].n++; total += shiftMs(s);
+    });
+    keys.sort(function (a, b) { return agg[b].ms - agg[a].ms; });
+    $('hoursList').innerHTML = inPeriod.length === 0 ? '<li class="loading">No shifts in this period.</li>' :
+      keys.map(function (k) {
+        return '<li class="hr"><span class="nm">' + esc(agg[k].name) + '</span><span class="n mono">' + plural(agg[k].n, 'shift', 'shifts') + '</span><b class="mono">' + fmtDur(agg[k].ms) + '</b></li>';
+      }).join('') +
+      '<li class="hr tot"><span class="nm">Total</span><span class="n mono">' + plural(inPeriod.length, 'shift', 'shifts') + '</span><b class="mono">' + fmtDur(total) + '</b></li>';
+
+    var fe = document.activeElement;
+    if (state.editShift && fe && fe.tagName === 'INPUT' && $('shiftList').contains(fe)) return;
+    var list = inPeriod.filter(function (s) { return s.end; });
+    $('noShifts').hidden = list.length > 0;
+    $('shiftList').innerHTML = list.map(function (s) {
+      var key = 'shift:' + s.id, armed = state.armed === key, isPaid = !!paid[s.id];
+      return '<li class="shift" data-id="' + esc(s.id) + '"><div class="sh-main"><b>' + esc(s.name) + '</b><span class="sh-sub mono">' + esc(span(s)) + '</span></div>' +
+        '<span class="sh-dur mono">' + fmtDur(shiftMs(s)) + '</span>' +
+        (isPaid ? '<span class="tag">Paid</span>' : !canCorrectShifts() ? '' :
+          '<div class="sh-actions"><button class="btn sm" type="button" data-act="edit">Edit</button>' +
+          '<button class="btn sm danger' + (armed ? ' armed' : '') + '" type="button" data-act="del">' + (armed ? 'Tap again to delete' : 'Delete') + '</button></div>') + '</li>';
+    }).join('');
+  }
+
+  function renderPaid() {
+    var list = state.payments.slice().sort(function (a, b) { return (b.paidAt || 0) - (a.paidAt || 0); });
+    $('noPaid').hidden = list.length > 0;
+    $('paidList').innerHTML = list.map(function (p) {
+      var isOpen = !!state.openPays[p.id], key = 'undo:' + p.id, armed = state.armed === key;
+      var detail = '';
+      if (isOpen) {
+        detail = '<div class="d-detail"><h2 class="sec">Shifts covered</h2>' + (p.shifts || []).slice().sort(function (a, b) { return a.start - b.start; }).map(function (s) {
+          return '<div class="pshift"><span class="mono">' + esc(span(s)) + '</span><span class="mono">' + fmtDur(s.end - s.start) + '</span></div>';
+        }).join('') + '</div>';
+      }
+      return '<li class="day" data-id="' + esc(p.id) + '">' +
+        '<div class="d-head"><div><h3>' + esc(p.name) + '</h3><span class="d-sub mono">Paid ' + esc(dayName(p.paidAt)) + ', ' + esc(clock(p.paidAt)) + '</span></div>' +
+        '<div class="d-tot mono">' + money(p.amount) + '<small>' + fmtMin(p.minutes) + ' at ' + money(p.rate) + '/h</small></div></div>' +
+        '<div class="d-actions"><button class="btn sm" type="button" data-act="view" aria-expanded="' + isOpen + '">' + (isOpen ? 'Hide shifts' : 'View shifts') + '</button>' +
+        '<button class="btn sm danger' + (armed ? ' armed' : '') + '" type="button" data-act="undo">' + (armed ? 'Tap again to undo payment' : 'Undo payment') + '</button></div>' + detail + '</li>';
+    }).join('');
+  }
+
+  async function startShift() {
+    var name = $('shiftName').value.trim();
+    if (!name) { toast('Type your name first.'); $('shiftName').focus(); return; }
+    if (state.shifts.some(function (s) { return !s.end && nameKey(s.name) === nameKey(name); })) { toast(name + ' is already on shift.'); return; }
+    var s = { id: newId(), name: name, start: Date.now(), end: null };
+    var ok = await guarded(function () { return put('shifts', s); }, name + ' started a shift at ' + clock(s.start));
+    if (ok) { rememberName(name); $('shiftName').value = ''; }
+  }
+
+  /* ---------- events ---------- */
+  $('salesChannels').addEventListener('click', function (e) {
+    var link = e.target.closest('a'); if (!link) return;
+    if (link.getAttribute('aria-current') === 'page') { e.preventDefault(); return; }
+    if (state.editId || Object.keys(state.qty).some(function (key) { return state.qty[key] > 0; }) || $('cust').value.trim() || $('note').value.trim()) {
+      if (!window.confirm('Switch order channel? Unsaved order changes will be discarded.')) e.preventDefault();
+    }
+  });
+  document.querySelector('.tabs').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-tab]'); if (!b) return;
+    if (state.editId && b.dataset.tab !== 'new') endEdit();
+    setTab(b.dataset.tab);
+  });
+  $('goItems').addEventListener('click', function () { setTab('items'); });
+  $('cust').addEventListener('input', renderSummary);
+  $('saveOrder').addEventListener('click', saveOrder);
+  $('cancelEdit').addEventListener('click', function () { endEdit(); setTab('orders'); });
+  $('addForm').addEventListener('submit', addItem);
+
+  $('picker').addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-act]'); if (!b) return;
+    var key = b.closest('.pick').dataset.id, q = state.qty[key] || 0;
+    state.qty[key] = Math.max(0, Math.min(99, q + (b.dataset.act === 'inc' ? 1 : -1)));
+    renderPicker(); renderSummary();
+  });
+
+  $('closeDay').addEventListener('click', function () { state.closing = true; renderSales(); });
+  $('closeNo').addEventListener('click', function () { state.closing = false; renderSales(); });
+  $('closeYes').addEventListener('click', closeDay);
+
+  $('chips').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-filter]'); if (!b) return;
+    state.filter = b.dataset.filter; renderOrders();
+  });
+  function goButtons(e) {
+    var b = e.target.closest('[data-go]'); if (b) setTab(b.dataset.go);
+  }
+  $('noOrders').addEventListener('click', goButtons);
+  $('noDays').addEventListener('click', goButtons);
+
+  $('orders').addEventListener('click', async function (e) {
+    var b = e.target.closest('button[data-act]'); if (!b) return;
+    var id = b.closest('.order').dataset.id;
+    var o = state.orders.find(function (x) { return x.id === id; }); if (!o) return;
+    if (b.dataset.act === 'print') {
+      printOrder(o);
+    } else if (b.dataset.act === 'toggle') {
+      var next = o.status === 'done' ? 'open' : 'done';
+      guarded(function () { return put('orders', Object.assign({}, o, { status: next })); });
+    } else if (b.dataset.act === 'edit') {
+      startEdit(id);
+    } else {
+      var key = 'order:' + id;
+      if (state.armed !== key) { arm(key); return; }
+      disarm();
+      guarded(function () { return remove('orders', id); }, 'Order deleted');
+    }
+  });
+
+  $('dayList').addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-act]'); if (!b) return;
+    var id = b.closest('.day').dataset.id;
+    if (b.dataset.act === 'view') {
+      state.openDays[id] = !state.openDays[id];
+      renderDays();
+    } else {
+      var key = 'day:' + id;
+      if (state.armed !== key) { arm(key); return; }
+      disarm();
+      guarded(function () { return remove('days', id); }, 'Day deleted');
+    }
+  });
+
+  $('itemList').addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-act]'); if (!b) return;
+    var id = b.closest('.itemrow').dataset.id, key = 'item:' + id;
+    if (state.worker) return;
+    if (b.dataset.act === 'edit') {
+      var item = state.items.find(function (x) { return x.id === id; }); if (!item) return;
+      var name = window.prompt('Item name', item.name); if (name === null) return;
+      name = name.trim(); if (!name) { toast('Type an item name.'); return; }
+      var raw = window.prompt('Price (leave blank for no price)', typeof item.price === 'number' ? String(item.price) : '');
+      if (raw === null) return;
+      raw = raw.trim().replace(',', '.');
+      var price = raw === '' ? null : Number(raw);
+      if (price !== null && (!isFinite(price) || price < 0)) { toast('Enter a valid price.'); return; }
+      if (price !== null) price = Math.round(price * 100) / 100;
+      disarm();
+      guarded(function () { return put('items', Object.assign({}, item, { name: name, price: price })); }, 'Item updated');
+      return;
+    }
+    if (state.armed !== key) { arm(key); return; }
+    disarm();
+    guarded(function () { return remove('items', id); }, 'Item removed');
+  });
+
+  $('startShift').addEventListener('click', startShift);
+  $('shiftName').addEventListener('keydown', function (e) { if (e.key === 'Enter') startShift(); });
+  $('nameChips').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-name]'); if (b) { $('shiftName').value = b.dataset.name; $('shiftName').focus(); }
+  });
+  $('shiftViews').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-view]'); if (!b) return;
+    disarm(); state.shiftView = b.dataset.view; renderShifts();
+  });
+  $('periodChips').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-period]'); if (b) { state.shiftPeriod = b.dataset.period; renderShifts(); }
+  });
+  $('activeList').addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-act]'); if (!b) return;
+    var id = b.closest('.shift').dataset.id, key = 'end:' + id;
+    var s = state.shifts.find(function (x) { return x.id === id; }); if (!s) return;
+    if (b.dataset.act === 'correct') { openShiftCorrection(s); return; }
+    if (state.armed !== key) { arm(key); return; }
+    disarm();
+    var end = Date.now();
+    guarded(function () { return put('shifts', Object.assign({}, s, { end: end })); }, s.name + ' worked ' + fmtDur(end - s.start));
+  });
+
+  $('payList').addEventListener('input', function (e) {
+    if (!e.target.dataset || !e.target.dataset.rate) return;
+    state.rateDraft[e.target.closest('.pay').dataset.key] = e.target.value;
+  });
+  $('payList').addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-act]'); if (!b || b.disabled) return;
+    var card = b.closest('.pay'), key = card.dataset.key;
+    var g = workerGroups().find(function (x) { return x.key === key; }); if (!g) return;
+    if (b.dataset.act === 'saverate') {
+      var raw = (state.rateDraft[key] !== undefined ? state.rateDraft[key] : card.querySelector('input').value).trim().replace(',', '.');
+      var rate = Number(raw);
+      if (raw === '' || !isFinite(rate) || rate < 0) { toast('Rate must be a number like 12.50.'); return; }
+      rate = Math.round(rate * 100) / 100;
+      delete state.rateDraft[key];
+      guarded(function () { return put('workers', { id: rateId(key), name: g.name, rate: rate }); }, 'Rate for ' + g.name + ' saved');
+      return;
+    }
+    var rt = rateOf(key); if (g.min <= 0 || rt === null) return;
+    var armKey = 'pay:' + key;
+    if (state.armed !== armKey) { arm(armKey); return; }
+    disarm();
+    var amount = Math.round(g.min / 60 * rt * 100) / 100;
+    var pay = {
+      id: newId(), name: g.name, paidAt: Date.now(), minutes: g.min, rate: rt, amount: amount,
+      shifts: g.shifts.map(function (s) { return { id: s.id, start: s.start, end: s.end }; })
+    };
+    guarded(function () { return put('payments', pay); }, g.name + ' paid ' + money(amount) + '. Unpaid hours are back to 0.');
+  });
+
+  $('paidList').addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-act]'); if (!b) return;
+    var id = b.closest('.day').dataset.id;
+    if (b.dataset.act === 'view') { state.openPays[id] = !state.openPays[id]; renderPaid(); return; }
+    var key = 'undo:' + id;
+    if (state.armed !== key) { arm(key); return; }
+    disarm();
+    guarded(function () { return remove('payments', id); }, 'Payment undone. Those hours are unpaid again.');
+  });
+
+  $('addMissedShift').addEventListener('click', function () { openShiftCorrection(null); });
+  $('cancelManualShift').addEventListener('click', function () { $('manualShiftForm').hidden = true; $('manualShiftForm').reset(); manualShiftId = null; });
+  $('manualShiftForm').addEventListener('submit', async function (e) {
+    e.preventDefault();
+    if (!canCorrectShifts() || $('saveManualShift').disabled) return;
+    var original = manualShiftId ? state.shifts.find(function (x) { return x.id === manualShiftId; }) : null;
+    if (manualShiftId && !original) { toast('This shift no longer exists.'); return; }
+    if (manualShiftId && paidSet()[manualShiftId]) { toast('Undo the payment before correcting a paid shift.'); return; }
+    var name = $('manualName').value.trim();
+    var start = new Date($('manualStart').value).getTime();
+    var end = $('manualEnd').value ? new Date($('manualEnd').value).getTime() : null;
+    var error = validateShiftCorrection(name, start, end, manualShiftId);
+    if (error) { toast(error); return; }
+    var record = Object.assign({}, original || { id: newId() }, { name: name, start: start, end: end });
+    $('saveManualShift').disabled = true;
+    try {
+      var ok = await guarded(function () { return put('shifts', record); }, 'Shift saved. Unpaid hours have been updated.');
+      if (ok) { $('manualShiftForm').hidden = true; $('manualShiftForm').reset(); manualShiftId = null; rememberName(name); }
+    } finally { $('saveManualShift').disabled = false; }
+  });
+  $('shiftList').addEventListener('click', function (e) {
+    if (!canCorrectShifts()) return;
+    var b = e.target.closest('button[data-act]'); if (!b) return;
+    var id = b.closest('.shift').dataset.id;
+    var s = state.shifts.find(function (x) { return x.id === id; }); if (!s || paidSet()[id]) return;
+    if (b.dataset.act === 'edit') { openShiftCorrection(s); return; }
+    if (b.dataset.act !== 'del') return;
+    var key = 'shift:' + id;
+    if (state.armed !== key) { arm(key); return; }
+    disarm();
+    guarded(function () { return remove('shifts', id); }, 'Shift deleted');
+  });
+  setInterval(function () {
+    if (state.tab !== 'shifts' || state.auth !== 'in') return;
+    document.querySelectorAll('.live-dur').forEach(function (el) { el.textContent = fmtDur(Date.now() - Number(el.dataset.start)); });
+  }, 20000);
+
+  $('openSettings').addEventListener('click', function () {
+    if (state.tab === 'settings') return;
+    state.prevTab = state.tab; state.tab = 'settings'; state.closing = false; disarm();
+    render(); window.scrollTo(0, 0);
+  });
+  $('closeSettings').addEventListener('click', function () {
+    resetPasswordForm();
+    state.tab = state.prevTab || 'new'; render(); window.scrollTo(0, 0);
+  });
+  $('view-settings').addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.palette) prefs.palette = b.dataset.palette;
+    else if (b.dataset.mode) prefs.mode = b.dataset.mode;
+    else if (b.dataset.size) prefs.size = b.dataset.size;
+    else if (b.dataset.cur) prefs.currency = b.dataset.cur;
+    else return;
+    savePrefs(); applyTheme(); render();
+  });
+  $('receiptLogoUpload').addEventListener('change', async function () {
+    if (!canManageReceiptLogo() || sharedLogoSaving) return;
+    var file = this.files && this.files[0]; if (!file) return;
+    var status = $('receiptLogoStatus'); status.hidden = false;
+    var error = receiptLogoFileError(file);
+    if (error) { status.textContent = error; this.value = ''; return; }
+    sharedLogoSaving = true; renderSettings(); status.textContent = 'Saving logo for all devices…';
+    try {
+      var data = await readReceiptLogo(file);
+      await saveSharedReceiptLogo(data, true);
+      status.textContent = 'Logo saved for all devices. Offline devices will receive it when they reconnect.';
+    } catch (e) { status.textContent = sharedLogoError(e); }
+    finally { this.value = ''; sharedLogoSaving = false; renderSettings(); }
+  });
+  $('resetReceiptLogo').addEventListener('click', async function () {
+    if (!canManageReceiptLogo() || sharedLogoSaving) return;
+    var status = $('receiptLogoStatus'); status.hidden = false;
+    sharedLogoSaving = true; renderSettings(); status.textContent = 'Restoring logo for all devices…';
+    try { await saveSharedReceiptLogo('', true); status.textContent = 'Rooster Berg logo restored for all devices.'; }
+    catch (e) { status.textContent = sharedLogoError(e); }
+    finally { sharedLogoSaving = false; renderSettings(); }
+  });
+  $('receiptLogo').addEventListener('change', async function () {
+    if (!canManageReceiptLogo() || sharedLogoSaving) return;
+    var enabled = this.value !== 'off', status = $('receiptLogoStatus'); status.hidden = false;
+    sharedLogoSaving = true; renderSettings(); status.textContent = 'Saving logo setting…';
+    try { await saveSharedReceiptLogo(customReceiptLogo, enabled); status.textContent = 'Logo setting saved for all devices.'; }
+    catch (e) { status.textContent = sharedLogoError(e); }
+    finally { sharedLogoSaving = false; renderSettings(); }
+  });
+  $('receiptFooter').addEventListener('input', function () { prefs.receiptFooter = this.value.slice(0, 500); savePrefs(); });
+  $('receiptSpacing').addEventListener('change', function () { prefs.receiptSpacing = this.value; savePrefs(); });
+  $('receiptWidth').addEventListener('change', function () {
+    prefs.receiptWidth = this.value === '58' ? '58' : '80'; savePrefs();
+  });
+  $('shopName').addEventListener('input', function () {
+    prefs.shopName = this.value.trim().slice(0, 30); savePrefs();
+    $('shopTitle').textContent = prefs.shopName || 'Order Pad';
+  });
+
+  /* ---------- start ---------- */
+  scheduleMidnightClose();
+  setInterval(queueAutoClose, 30000);
+  window.addEventListener('online', queueAutoClose);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) { queueAutoClose(); scheduleMidnightClose(); } });
+  applyTheme();
+  $('today').textContent = new Date().toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' });
+  render();
+  function loginMsg(code) {
+    if (code === 'auth/too-many-requests') return 'Too many attempts. Wait a few minutes and try again.';
+    if (code === 'auth/network-request-failed') return 'No internet connection. Connect and try again.';
+    if (code === 'auth/invalid-email') return 'That email address is not valid.';
+    if (code === 'auth/user-disabled') return 'This login has been turned off.';
+    if (code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found' || code === 'auth/invalid-login-credentials') return 'The email or password is wrong.';
+    return 'Could not sign in. Try again.';
+  }
+
+  function resetPasswordForm() {
+    $('passwordForm').reset();
+    $('passwordForm').hidden = true;
+    $('passwordError').hidden = true;
+    $('passwordStatus').hidden = true;
+  }
+  function passwordErrorMessage(code) {
+    if (code === 'auth/wrong-password' || code === 'auth/invalid-credential' || code === 'auth/invalid-login-credentials') return 'The current password is incorrect. Try again.';
+    if (code === 'auth/weak-password' || code === 'auth/password-does-not-meet-requirements') return 'Choose a stronger password. Your account may require more characters, uppercase and lowercase letters, numbers or symbols.';
+    if (code === 'auth/network-request-failed') return 'Connection failed. Check your internet and try again.';
+    if (code === 'auth/too-many-requests') return 'Too many attempts. Wait a few minutes before trying again.';
+    if (code === 'auth/requires-recent-login' || code === 'auth/user-token-expired' || code === 'auth/session-changed') return 'Please sign in again before changing your password.';
+    if (code === 'auth/user-disabled') return 'This account has been disabled.';
+    return 'Could not change your password. Please try again.';
+  }
+  function passwordValidation(current, next, confirm) {
+    if (!current || !next || !confirm) return 'Complete all three password fields.';
+    if (next.length < 6) return 'Use at least 6 characters for the new password.';
+    if (next !== confirm) return 'The new passwords do not match.';
+    if (current === next) return 'Choose a password different from your current one.';
+    return '';
+  }
+  async function changeOwnPassword(auth, current, next) {
+    var user = auth.currentUser;
+    if (!user || !user.email) throw { code: 'auth/session-changed' };
+    var credential = firebase.auth.EmailAuthProvider.credential(user.email, current);
+    await user.reauthenticateWithCredential(credential);
+    if (!auth.currentUser || auth.currentUser.uid !== user.uid) throw { code: 'auth/session-changed' };
+    await user.updatePassword(next);
+    return user.uid;
+  }
+
+  function sessionNeedsLogout(authTime, cutoffMillis) {
+    var signedIn = Date.parse(authTime);
+    return Number.isFinite(signedIn) && Number.isFinite(cutoffMillis) && signedIn <= cutoffMillis;
+  }
+  function updateReloadUrl(cutoffMillis) {
+    var url = new URL(window.location.href);
+    url.searchParams.set('appUpdate', String(cutoffMillis));
+    return url.href;
+  }
+
+  function startFirebase() {
+    state.mode = 'firebase';
+    var auth, fs;
+    if (!window.firebase) { state.auth = 'error'; render(); return; }
+    try {
+      firebase.initializeApp(FB_CFG);
+      auth = firebase.auth();
+      fs = firebase.firestore();
+    } catch (e) { state.auth = 'error'; render(); return; }
+    try { fs.enablePersistence({ synchronizeTabs: true }).catch(function () {}); } catch (e) {}
+    state.signOut = function () { return auth.signOut(); };
+    var stopSessionWatch = null, forcingLogout = false, sessionWatchVersion = 0;
+    async function logoutAndRefresh(cutoffMillis) {
+      if (forcingLogout) return;
+      forcingLogout = true;
+      try {
+        await auth.signOut();
+        try { sessionStorage.setItem('orderpad.updateNotice', '1'); } catch (e) {}
+        window.location.replace(updateReloadUrl(cutoffMillis));
+      } catch (e) { forcingLogout = false; toast('Could not sign out. Check your connection and try again.'); }
+    }
+    function watchSession(user) {
+      var version = sessionWatchVersion;
+      stopSessionWatch = fs.collection('appControl').doc('session').onSnapshot({ includeMetadataChanges: true }, async function (snap) {
+        if (!snap.exists || snap.metadata.hasPendingWrites || snap.metadata.fromCache || forcingLogout) return;
+        var stamp = snap.data().logoutBefore;
+        if (!stamp || typeof stamp.toMillis !== 'function') return;
+        try {
+          var token = await user.getIdTokenResult();
+          if (version === sessionWatchVersion && auth.currentUser && auth.currentUser.uid === user.uid && sessionNeedsLogout(token.authTime, stamp.toMillis())) {
+            await logoutAndRefresh(stamp.toMillis());
+          }
+        } catch (e) { toast('Session update check failed. Sign out and reopen the app if an update was requested.'); }
+      }, function () {
+        if (canCorrectShifts()) {
+          $('logoutEveryoneStatus').textContent = 'Session updates unavailable. Publish the included Firebase rules, then reload.';
+          $('logoutEveryoneStatus').hidden = false;
+        }
+      });
+    }
+    $('logoutEveryone').addEventListener('click', async function () {
+      if (!canCorrectShifts() || $('logoutEveryone').disabled) return;
+      if (!navigator.onLine) { toast('Connect to the internet before logging everyone out.'); return; }
+      if (!window.confirm('Log out everyone, including you, and reload their app? Unsaved orders may be lost.')) return;
+      $('logoutEveryone').disabled = true;
+      $('logoutEveryoneStatus').textContent = 'Sending logout request…';
+      $('logoutEveryoneStatus').hidden = false;
+      try {
+        await fs.runTransaction(async function (transaction) {
+          transaction.set(fs.collection('appControl').doc('session'), {
+            logoutBefore: firebase.firestore.FieldValue.serverTimestamp()
+          });
+        });
+        $('logoutEveryoneStatus').textContent = 'Request sent. Connected users will sign out; offline users will sign out when they reconnect.';
+      } catch (e) {
+        $('logoutEveryoneStatus').textContent = e && e.code === 'permission-denied'
+          ? 'Permission denied. Sign in as owner and publish the updated Firebase rules.'
+          : 'Request failed. Check your connection and try again.';
+      } finally { $('logoutEveryone').disabled = false; }
+    });
+    $('loginForm').addEventListener('submit', async function (e) {
+      e.preventDefault();
+      var email = $('loginEmail').value.trim(), pw = $('loginPass').value, err = $('loginErr');
+      err.hidden = true;
+      if (!email || !pw) { err.textContent = 'Type your email and password.'; err.hidden = false; return; }
+      $('loginBtn').disabled = true;
+      try { await auth.signInWithEmailAndPassword(email, pw); $('loginPass').value = ''; }
+      catch (ex) { err.textContent = loginMsg(ex && ex.code); err.hidden = false; }
+      $('loginBtn').disabled = false;
+    });
+    $('openPassword').addEventListener('click', function () {
+      if (!auth.currentUser || $('savePassword').disabled) return;
+      resetPasswordForm(); $('passwordForm').hidden = false; $('currentPassword').focus();
+    });
+    $('cancelPassword').addEventListener('click', resetPasswordForm);
+    $('passwordForm').addEventListener('submit', async function (e) {
+      e.preventDefault();
+      if ($('savePassword').disabled) return;
+      var current = $('currentPassword').value, next = $('newPassword').value, confirm = $('confirmPassword').value;
+      var err = $('passwordError'); err.hidden = true; $('passwordStatus').hidden = true;
+      var invalid = passwordValidation(current, next, confirm);
+      if (invalid) { err.textContent = invalid; err.hidden = false; return; }
+      $('savePassword').disabled = true; $('cancelPassword').disabled = true;
+      $('savePassword').textContent = 'Saving…';
+      try {
+        var changedUid = await changeOwnPassword(auth, current, next);
+        resetPasswordForm();
+        if (auth.currentUser && auth.currentUser.uid === changedUid) {
+          $('passwordStatus').textContent = 'Password changed. Use your new password next time you sign in.';
+          $('passwordStatus').hidden = false;
+        }
+      } catch (ex) {
+        err.textContent = passwordErrorMessage(ex && ex.code); err.hidden = false;
+      } finally {
+        $('passwordForm').reset();
+        $('savePassword').disabled = false; $('cancelPassword').disabled = false;
+        $('savePassword').textContent = 'Save password';
+        current = next = confirm = '';
+      }
+    });
+    $('signOut').addEventListener('click', function () { resetPasswordForm(); if (state.signOut) state.signOut(); });
+    window.addEventListener('online', renderFoot);
+    window.addEventListener('offline', renderFoot);
+    auth.onAuthStateChanged(function (user) {
+      sessionWatchVersion++;
+      if (stopSessionWatch) { stopSessionWatch(); stopSessionWatch = null; }
+      if (!user || user.email !== state.userEmail) resetPasswordForm();
+      unsubs.forEach(function (u) { try { u(); } catch (e) {} });
+      unsubs = [];
+      if (user) {
+        state.userEmail = user.email || '';
+        var email = String(user.email || '').toLowerCase();
+        state.manager = !!email && email === String(FB_CFG.managerEmail || '').toLowerCase();
+        state.worker = !state.manager && (!email || email !== String(FB_CFG.ownerEmail || '').toLowerCase());
+        if (state.worker && state.tab === 'items') state.tab = 'new';
+        state.auth = 'in'; db = fs; state.loaded = false;
+        render(); subscribe(); watchSession(user);
+      } else {
+        otherChannelOrders = [];
+        customReceiptLogo = ''; sharedLogoEnabled = true; sharedLogoReady = false;
+        db = null; state.auth = 'out'; state.loaded = false; state.worker = false; state.manager = false; state.userEmail = '';
+        if (state.tab === 'settings') state.tab = state.prevTab || 'new';
+        state.items = []; state.orders = []; state.days = []; state.shifts = []; state.rates = []; state.payments = []; state.rateDraft = {}; state.editShift = null; state.editDraft = null;
+        state.qty = {}; state.editId = null; state.draft = null; state.closing = false;
+        $('cust').value = ''; $('note').value = '';
+        render();
+        try {
+          if (sessionStorage.getItem('orderpad.updateNotice')) {
+            sessionStorage.removeItem('orderpad.updateNotice');
+            $('loginErr').textContent = 'The owner requested an app update. Please sign in again.';
+            $('loginErr').hidden = false;
+          }
+        } catch (e) {}
+      }
+    });
+  }
+
+  (async function init() {
+    if (FB_ON) { startFirebase(); return; }
+    var d = null;
+    try { d = window.claude && window.claude.use ? await window.claude.use('db') : null; } catch (e) { d = null; }
+    if (d) { db = d; state.mode = 'cloud'; subscribe(); }
+    else { state.mode = 'local'; lsLoad(); state.loaded = true; render(); }
+  })();
+})();
+</script>
+<script>
+(function () {
+  if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('./sw.js').catch(function () {});
+    });
+  }
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
+})();
+</script>
+</body>
+</html>

@@ -13,6 +13,10 @@
 /* Prevent double-tap zoom while allowing scrolling and pinch zoom. */
 html, body { touch-action: manipulation; }
 body { margin: 0; }
+.sales-channels { display:flex; gap:8px; padding:8px 12px; }
+.sales-channels a { flex:1; text-align:center; padding:10px 8px; border:1px solid var(--line); border-radius:10px; text-decoration:none; color:var(--ink); font-weight:700; }
+.sales-channels a[aria-current="page"] { background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
+.sales-channels #boltChannel[aria-current="page"] { background:#177942; color:white; border-color:#177942; }
 img { max-width: 100%; }
 [hidden] { display: none !important; }
 </style>
@@ -504,6 +508,11 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
       <h1 id="shopTitle">Order Pad</h1>
       <p class="date mono" id="today"></p>
     </div>
+    <nav id="salesChannels" class="sales-channels" aria-label="Order channel" hidden>
+      <a id="restaurantChannel" href="./index.html">Restaurant</a>
+      <a id="boltChannel" href="./bolt.html">Bolt Food</a>
+    </nav>
+    <p id="channelHint" class="muted" style="text-align:center;margin:4px 12px 10px" hidden></p>
     <nav class="tabs" role="tablist" aria-label="Sections">
       <button class="tab" role="tab" id="tab-new" data-tab="new" aria-selected="true">New</button>
       <button class="tab" role="tab" id="tab-orders" data-tab="orders" aria-selected="false">Orders <span class="badge" id="openBadge" hidden>0</span></button>
@@ -527,6 +536,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
       </div>
       <div class="setcard">
         <h3>Shop</h3>
+        <p class="muted">At 00:00 Georgia time, finished orders move to Days. Unfinished orders stay active; when marked done, they move to the date they were taken. If no device is open and online, closing catches up when the app reconnects. Worker shifts continue until ended.</p>
         <div class="field">
           <label for="shopName">Shop name</label>
           <input id="shopName" type="text" autocomplete="off" maxlength="30" placeholder="Order Pad">
@@ -546,7 +556,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
         </div>
         <img id="receiptLogoPreview" src="./receipt-logo.png" alt="Current receipt logo" style="display:block;width:120px;max-height:160px;object-fit:contain;background:white;border:1px solid #ddd;padding:8px;border-radius:8px">
         <button class="btn sm" id="resetReceiptLogo" type="button">Restore Rooster Berg logo</button>
-        <p class="muted">PNG, JPG or WebP, up to 700 KB. Only the owner can change the shared logo. Changes sync to all signed-in devices. A white or transparent background works best.</p>
+        <p class="muted">PNG, JPG or WebP, up to 700 KB. The owner and manager can change the shared logo. Changes sync to all signed-in devices. A white or transparent background works best.</p>
         <p class="muted" id="receiptLogoStatus" role="status" hidden></p>
         <div class="field"><label for="receiptSpacing">Receipt spacing</label>
           <select id="receiptSpacing"><option value="compact">Compact</option><option value="roomy">Roomy (longer receipt)</option><option value="extra">Extra space</option></select>
@@ -766,6 +776,14 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
   var FB_CFG = window.ORDERPAD_CONFIG || null;
   var FB_ON = !!(FB_CFG && FB_CFG.apiKey && FB_CFG.projectId && String(FB_CFG.apiKey).indexOf('PASTE') !== 0);
   var unsubs = [];
+  var SALES_CHANNEL = /\/bolt\.html$/.test(window.location.pathname) ? 'bolt' : 'restaurant';
+  var OTHER_CHANNEL = SALES_CHANNEL === 'bolt' ? 'restaurant' : 'bolt';
+  var otherChannelOrders = [];
+  function salesCollection(name, channel) {
+    var selected = channel || SALES_CHANNEL;
+    if (selected === 'bolt' && ['items', 'orders', 'days'].indexOf(name) >= 0) return 'bolt' + name.charAt(0).toUpperCase() + name.slice(1);
+    return name;
+  }
   var PREF_KEY = 'orderpad.prefs';
   var customReceiptLogo = '', sharedLogoEnabled = true, sharedLogoReady = false, sharedLogoSaving = false;
   var prefs = { palette: 'sunny', mode: 'auto', size: 'normal', currency: 'none', shopName: '', receiptWidth: '80', receiptSpacing: 'roomy', receiptFooter: 'Thank you!', receiptLogo: 'on' };
@@ -815,7 +833,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     rates: [], payments: [], shiftView: 'pay', rateDraft: {}, openPays: {}
   };
   var db = null;
-  var LS = 'orderpad.v1';
+  var LS = SALES_CHANNEL === 'bolt' ? 'orderpad.bolt.v1' : 'orderpad.v1';
   var armTimer = null, toastTimer = null;
 
   function esc(s) {
@@ -875,7 +893,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     var id = obj.id, data = Object.assign({}, obj);
     delete data.id;
     if (db) {
-      var w = db.collection(coll).doc(id).set(data);
+      var w = db.collection(salesCollection(coll)).doc(id).set(data);
       if (state.mode === 'firebase') watchWrite(w); else await w;
     } else {
       var arr = state[coll], i = arr.findIndex(function (x) { return x.id === id; });
@@ -885,7 +903,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
   }
   async function remove(coll, id) {
     if (db) {
-      var w2 = db.collection(coll).doc(id).delete();
+      var w2 = db.collection(salesCollection(coll)).doc(id).delete();
       if (state.mode === 'firebase') watchWrite(w2); else await w2;
     } else {
       state[coll] = state[coll].filter(function (x) { return x.id !== id; });
@@ -903,6 +921,12 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
   function fromSnap(snap) {
     return snap.docs.map(function (d) { return Object.assign({ id: d.id }, d.data()); });
   }
+  function canManageReceiptLogo() {
+    if (state.auth !== 'in' || !state.userEmail || !FB_CFG) return false;
+    var email = state.userEmail.toLowerCase();
+    return email === String(FB_CFG.ownerEmail || '').toLowerCase() ||
+      email === String(FB_CFG.managerEmail || '').toLowerCase();
+  }
   function subscribeReceiptBranding() {
     unsubs.push(db.collection('appControl').doc('receiptBranding').onSnapshot({ includeMetadataChanges: true }, function (snap) {
       if (snap.metadata.hasPendingWrites || (!snap.exists && snap.metadata.fromCache)) return;
@@ -919,7 +943,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     }));
   }
   async function saveSharedReceiptLogo(logo, enabled) {
-    if (!canCorrectShifts() || !sharedLogoReady || state.mode !== 'firebase' || !db) throw new Error('Only the owner can change the shared logo after it loads.');
+    if (!canManageReceiptLogo() || !sharedLogoReady || state.mode !== 'firebase' || !db) throw new Error('The owner and manager can change the shared logo after it loads.');
     if (logo !== '' && !isReceiptLogoData(logo)) throw new Error('Choose a valid PNG, JPG or WebP logo.');
     if (!navigator.onLine) throw new Error('Connect to the internet to change the logo on all devices.');
     await db.runTransaction(async function (transaction) {
@@ -928,17 +952,18 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     customReceiptLogo = logo; sharedLogoEnabled = !!enabled;
   }
   function sharedLogoError(error) {
-    return error && error.code === 'permission-denied' ? 'Permission denied. Publish the updated Firebase rules and sign in as owner.' : (error.message || 'Could not save the shared logo. Try again.');
+    return error && error.code === 'permission-denied' ? 'Permission denied. Publish the updated Firebase rules and sign in as owner or manager.' : (error.message || 'Could not save the shared logo. Try again.');
   }
   function subscribe() {
     if (state.mode === 'firebase') subscribeReceiptBranding();
     var got = { items: false, orders: false, days: false, shifts: false, workers: false, payments: false };
     var limited = state.mode === 'firebase' && state.worker;
-    function done() { state.loaded = got.items && got.orders && got.days && got.shifts && got.workers && got.payments; render(); }
+    function done() { state.loaded = got.items && got.orders && got.days && got.shifts && got.workers && got.payments; render(); if (state.loaded) queueAutoClose(); }
     function fail(e) { state.loaded = true; render(); toast(e && e.code === 'permission-denied' ? 'This login is not allowed to read the data. Check the Firestore rules.' : 'Could not load your saved data.'); }
-    unsubs.push(db.collection('items').onSnapshot(function (s) { state.items = fromSnap(s); got.items = true; done(); }, fail));
-    unsubs.push(db.collection('orders').onSnapshot(function (s) { state.orders = fromSnap(s); got.orders = true; done(); }, fail));
-    unsubs.push(db.collection('days').onSnapshot(function (s) { state.days = fromSnap(s); got.days = true; done(); }, fail));
+    unsubs.push(db.collection(salesCollection('items')).onSnapshot(function (s) { state.items = fromSnap(s); got.items = true; done(); }, fail));
+    unsubs.push(db.collection(salesCollection('orders')).onSnapshot(function (s) { state.orders = fromSnap(s); got.orders = true; done(); }, fail));
+    unsubs.push(db.collection(salesCollection('days')).onSnapshot(function (s) { state.days = fromSnap(s); got.days = true; done(); }, fail));
+    unsubs.push(db.collection(salesCollection('orders', OTHER_CHANNEL)).onSnapshot(function (snap) { otherChannelOrders = fromSnap(snap); queueAutoClose(); }, function () { toast('Could not load the other order channel. Publish the updated Firebase rules and refresh.'); }));
     var sq = db.collection('shifts');
     if (limited) sq = sq.where('end', '==', null);
     unsubs.push(sq.onSnapshot(function (s) { state.shifts = fromSnap(s); got.shifts = true; done(); }, fail));
@@ -1012,6 +1037,12 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
 
   /* ---------- rendering ---------- */
   function renderTabs() {
+    $('salesChannels').hidden = state.auth !== 'in' || state.tab === 'settings';
+    $('restaurantChannel').setAttribute('aria-current', SALES_CHANNEL === 'restaurant' ? 'page' : 'false');
+    $('boltChannel').setAttribute('aria-current', SALES_CHANNEL === 'bolt' ? 'page' : 'false');
+    $('channelHint').hidden = state.auth !== 'in' || state.tab === 'settings';
+    $('channelHint').textContent = SALES_CHANNEL === 'bolt' ? 'Bolt Food · separate menu, orders and daily totals' : 'Restaurant orders';
+    $('tab-items').textContent = SALES_CHANNEL === 'bolt' ? 'Bolt menu' : 'Items';
     ['new', 'orders', 'days', 'shifts', 'items'].forEach(function (t) {
       $('tab-' + t).setAttribute('aria-selected', String(state.tab === t));
       $('view-' + t).hidden = state.auth !== 'in' || state.tab !== t || (t === 'items' && state.worker);
@@ -1070,13 +1101,14 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     $('sales').hidden = !state.loaded;
     $('salesAmt').textContent = plural(s.count, 'order', 'orders');
     $('salesSub').textContent = s.count === 0 ? 'Nothing to close yet' : (open === 0 ? 'All done' : open + ' open · ' + (s.count - open) + ' done');
-    $('closeDay').disabled = s.count === 0;
+    $('closeDay').disabled = s.count === open || dayCloseBusy;
     var panel = $('closePanel');
     panel.hidden = !(state.closing && s.count > 0);
     if (!panel.hidden) {
-      var txt = 'Close the day with ' + plural(s.count, 'order', 'orders') + (s.priced ? ' and ' + money(s.total) + ' sold' : '') + '? ';
-      if (open) txt += plural(open, 'order is', 'orders are') + ' not marked done and will be counted too. ';
-      txt += 'All orders move to the Days tab and numbering starts again at #001.';
+      var completed = sums(state.orders.filter(function (o) { return o.status === 'done'; }));
+      var txt = 'Archive ' + plural(completed.count, 'finished order', 'finished orders') + (completed.priced ? ' totaling ' + money(completed.total) : '') + '? ';
+      if (open) txt += plural(open, 'unfinished order stays', 'unfinished orders stay') + ' in the active list. ';
+      txt += 'Earlier orders are saved under their original date in Days.';
       $('closeText').textContent = txt;
     }
   }
@@ -1110,6 +1142,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
       return '<li class="order' + (isDone ? ' done' : '') + '" data-id="' + esc(o.id) + '">' +
         '<div class="o-head"><div class="o-id"><span class="o-no mono">#' + pad(o.no || 0) + '</span><h3>' + esc(o.customer || 'No name') + '</h3></div>' +
         '<span class="pill ' + (isDone ? 'done' : 'open') + '">' + (isDone ? 'Done' : 'Open') + '</span></div>' +
+        (businessDateKey(o.createdAt) && businessDateKey(o.createdAt) < businessDateKey(Date.now()) ? '<p class="o-note">From ' + esc(businessDateKey(o.createdAt)) + ' · moves to that day when marked done</p>' : '') +
         '<ul class="o-lines">' + lines + '</ul>' +
         (o.note ? '<p class="o-note">' + esc(o.note) + '</p>' : '') +
         '<div class="o-foot"><div class="o-meta"><span class="mono">' + esc(when(o.createdAt || Date.now())) + (o.editedAt ? ' · edited ' + esc(clock(o.editedAt)) : '') + '</span>' +
@@ -1156,7 +1189,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
   function receiptHtml(o) {
     var lines = o.lines || [];
     var allPriced = lines.length > 0 && lines.every(function (l) { return typeof l.price === 'number'; });
-    return '<header>' + (sharedLogoEnabled ? '<img class="receipt-logo" src="' + esc(receiptLogoSource()) + '" alt="Restaurant logo">' : '') + '<h1>' + esc(prefs.shopName || 'Rooster Berg') + '</h1><p>ORDER RECEIPT</p></header>' +
+    return '<header>' + (sharedLogoEnabled ? '<img class="receipt-logo" src="' + esc(receiptLogoSource()) + '" alt="Restaurant logo">' : '') + '<h1>' + esc(prefs.shopName || 'Rooster Berg') + '</h1><p>' + (SALES_CHANNEL === 'bolt' ? 'BOLT FOOD ORDER' : 'ORDER RECEIPT') + '</p></header>' +
       '<p><b>Order #' + esc(pad(o.no || 0)) + '</b><br>' +
       (o.createdAt ? esc(new Date(o.createdAt).toLocaleString()) + '<br>' : '') +
       'Customer: ' + esc(o.customer || 'No name') + '</p><hr>' +
@@ -1226,7 +1259,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     $('allSub').textContent = plural(days.length, 'day', 'days') + ' · ' + plural(orderCount, 'order', 'orders');
 
     ul.innerHTML = days.map(function (d) {
-      var start = dayStart(d), closed = d.closedAt || start;
+      var start = d.businessDate ? Date.parse(d.businessDate + 'T12:00:00+04:00') : dayStart(d), closed = d.closedAt || start;
       var sameDay = new Date(start).toDateString() === new Date(closed).toDateString();
       var closedTxt = 'Closed ' + (sameDay ? '' : dayName(closed) + ', ') + clock(closed);
       var key = 'day:' + d.id, armed = state.armed === key, isOpen = !!state.openDays[d.id];
@@ -1296,7 +1329,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     var logoPreview = $('receiptLogoPreview');
     if (logoPreview.getAttribute('src') !== receiptLogoSource()) logoPreview.src = receiptLogoSource();
     $('receiptLogo').value = sharedLogoEnabled ? 'on' : 'off';
-    var canBrand = canCorrectShifts() && sharedLogoReady && !sharedLogoSaving;
+    var canBrand = canManageReceiptLogo() && sharedLogoReady && !sharedLogoSaving;
     $('receiptLogo').disabled = !canBrand;
     $('receiptLogoUpload').disabled = !canBrand;
     $('resetReceiptLogo').disabled = !canBrand;
@@ -1366,7 +1399,8 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
       return;
     }
 
-    var no = state.orders.reduce(function (m, x) { return Math.max(m, x.no || 0); }, 0) + 1;
+    var todayKey = businessDateKey(Date.now());
+    var no = state.orders.filter(function (x) { return businessDateKey(x.createdAt) === todayKey; }).reduce(function (m, x) { return Math.max(m, x.no || 0); }, 0) + 1;
     var order = Object.assign({ id: newId(), no: no, status: 'open', createdAt: Date.now() }, fields);
     var ok = await guarded(function () { return put('orders', order); }, 'Order #' + pad(no) + ' saved for ' + customer);
     if (ok) {
@@ -1375,29 +1409,122 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     } else { renderSummary(); }
   }
 
+  // Georgia business dates are independent of each device's display timezone.
+  function businessDateKey(timestamp) {
+    if (typeof timestamp !== 'number' || !Number.isFinite(timestamp)) return '';
+    var parts = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Tbilisi', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(new Date(timestamp));
+    var date = {}; parts.forEach(function (p) { date[p.type] = p.value; });
+    return date.year + '-' + date.month + '-' + date.day;
+  }
+  function midnightAfterBusinessDate(key) {
+    // Asia/Tbilisi uses UTC+04:00.
+    return Date.parse(key + 'T00:00:00+04:00') + 86400000;
+  }
+  function dueOrderGroups(orders, now) {
+    var today = businessDateKey(now), groups = {};
+    orders.forEach(function (o) {
+      var key = businessDateKey(o.createdAt);
+      if (o.status === 'done' && key && key < today) (groups[key] || (groups[key] = [])).push(o);
+    });
+    return groups;
+  }
+  function archiveChunks(orders) {
+    var chunks = [], chunk = [], bytes = 0;
+    orders.forEach(function (o) {
+      var size = new TextEncoder().encode(JSON.stringify(o)).length;
+      if (size > 700000) throw new Error('One order is too large to archive automatically.');
+      if (chunk.length && (chunk.length >= 150 || bytes + size > 700000)) { chunks.push(chunk); chunk = []; bytes = 0; }
+      chunk.push(o); bytes += size;
+    });
+    if (chunk.length) chunks.push(chunk);
+    return chunks;
+  }
+  async function archiveOrderChunk(candidates, closedAt, dateKey, automatic, channel) {
+    var archiveDb = db, manualId = automatic ? null : newId();
+    var refs = candidates.map(function (o) { return archiveDb.collection(salesCollection('orders', channel)).doc(o.id); });
+    return archiveDb.runTransaction(async function (tx) {
+      var snapshots = await Promise.all(refs.map(function (ref) { return tx.get(ref); }));
+      var list = [], removeRefs = [];
+      snapshots.forEach(function (snap, i) {
+        if (!snap.exists) return;
+        var order = Object.assign({}, snap.data(), { id: snap.id });
+        if (order.status !== 'done') return;
+        if (dateKey && businessDateKey(order.createdAt) !== dateKey) return;
+        list.push(order); removeRefs.push(refs[i]);
+      });
+      if (!list.length) return 0;
+      var dayRef, record;
+      for (var part = 1; part <= 100; part++) {
+        var archiveId = automatic ? 'auto-' + dateKey + (part === 1 ? '' : '-' + part) : manualId;
+        dayRef = archiveDb.collection(salesCollection('days', channel)).doc(archiveId);
+        var daySnap = await tx.get(dayRef);
+        if (!automatic && daySnap.exists) throw new Error('Archive ID already exists. Retry.');
+        var prior = daySnap.exists ? daySnap.data() : null;
+        if (prior && (prior.automatic !== true || prior.businessDate !== dateKey)) throw new Error('Unexpected day archive. Ask the owner to check Days.');
+        var previous = prior ? prior.orders || [] : [];
+        var combined = previous.concat(list).sort(function (a, b) { return (a.createdAt || 0) - (b.createdAt || 0); });
+        var totals = sums(combined);
+        record = { closedAt: prior ? prior.closedAt : closedAt, count: totals.count, total: totals.priced ? totals.total : null, orders: combined, automatic: automatic };
+        if (dateKey) record.businessDate = dateKey;
+        if (new TextEncoder().encode(JSON.stringify(record)).length <= 950000) break;
+        if (!automatic || !previous.length || part === 100) throw new Error('Archive is too large. Ask the owner to check Days.');
+      }
+      tx.set(dayRef, record);
+      removeRefs.forEach(function (ref) { tx.delete(ref); });
+      return list.length;
+    });
+  }
+  var dayCloseBusy = false, autoCloseTimer = null, midnightTimer = null, autoCloseErrorAt = 0;
+  function queueAutoClose() {
+    if (autoCloseTimer) return;
+    autoCloseTimer = setTimeout(function () { autoCloseTimer = null; autoCloseDays(); }, 500);
+  }
+  function scheduleMidnightClose() {
+    clearTimeout(midnightTimer);
+    var now = Date.now(), next = midnightAfterBusinessDate(businessDateKey(now));
+    midnightTimer = setTimeout(function () { queueAutoClose(); scheduleMidnightClose(); }, Math.max(1000, next - now + 300));
+  }
+  async function autoCloseDays() {
+    if (dayCloseBusy || state.mode !== 'firebase' || state.auth !== 'in' || !state.loaded || !db || !navigator.onLine) return;
+    var sources = [{ channel: SALES_CHANNEL, orders: state.orders }, { channel: OTHER_CHANNEL, orders: otherChannelOrders }];
+    if (!sources.some(function (source) { return Object.keys(dueOrderGroups(source.orders, Date.now())).length; })) return;
+    dayCloseBusy = true; renderSales();
+    try {
+      var count = 0;
+      for (var c = 0; c < sources.length; c++) {
+        var source = sources[c], groups = dueOrderGroups(source.orders, Date.now()), keys = Object.keys(groups).sort();
+        for (var k = 0; k < keys.length; k++) {
+          var key = keys[k], chunks = archiveChunks(groups[key]);
+          for (var i = 0; i < chunks.length; i++) {
+            if (state.auth !== 'in' || !navigator.onLine) return;
+            count += await archiveOrderChunk(chunks[i], midnightAfterBusinessDate(key), key, true, source.channel);
+          }
+        }
+      }
+      if (count) toast('Finished orders saved under their original date in Days. Unfinished orders stay active.');
+    } catch (e) {
+      if (Date.now() - autoCloseErrorAt > 60000) { toast('Automatic closing could not finish. Orders remain saved; the app will retry.'); autoCloseErrorAt = Date.now(); }
+    } finally { dayCloseBusy = false; renderSales(); }
+  }
   async function closeDay() {
-    if (state.orders.length === 0) return;
-    var list = state.orders.slice().sort(function (a, b) { return (a.no || 0) - (b.no || 0); });
-    var s = sums(list);
-    var day = {
-      id: newId(), closedAt: Date.now(), count: s.count,
-      total: s.priced ? s.total : null,
-      orders: list
-    };
-    $('closeYes').disabled = true;
-    var ok = await guarded(function () { return put('days', day); });
-    $('closeYes').disabled = false;
-    if (!ok) return;
-    var left = 0;
-    for (var i = 0; i < list.length; i++) {
-      try { await remove('orders', list[i].id); } catch (e) { left++; }
-    }
-    state.closing = false;
-    if (state.editId) endEdit();
-    state.openDays[day.id] = true;
-    toast(left ? 'Day saved, but ' + plural(left, 'order is', 'orders are') + ' still on the Orders tab. Delete them by hand.'
-      : 'Day closed' + (s.priced ? '. Total sold ' + money(s.total) : ''));
-    setTab('days');
+    if (!state.orders.some(function (o) { return o.status === 'done'; }) || dayCloseBusy) return;
+    if (state.mode !== 'firebase') { toast('Automatic day closing requires the online app.'); return; }
+    if (!navigator.onLine) { toast('Connect to the internet to close the day safely.'); return; }
+    dayCloseBusy = true; $('closeYes').disabled = true;
+    var list = state.orders.filter(function (o) { return o.status === 'done'; });
+    try {
+      var groups = {}, count = 0, today = businessDateKey(Date.now());
+      list.forEach(function (o) { var key = businessDateKey(o.createdAt) || today; (groups[key] || (groups[key] = [])).push(o); });
+      var keys = Object.keys(groups).sort();
+      for (var k = 0; k < keys.length; k++) {
+        var key = keys[k], chunks = archiveChunks(groups[key]), earlier = key < today;
+        for (var i = 0; i < chunks.length; i++) count += await archiveOrderChunk(chunks[i], earlier ? midnightAfterBusinessDate(key) : Date.now(), key, earlier);
+      }
+      state.closing = false;
+      toast(count ? 'Day closed. Orders are saved in Days.' : 'These orders were already closed on another device.');
+      setTab('days');
+    } catch (e) { toast('Could not finish closing. Any remaining orders are still saved; try again.'); }
+    finally { dayCloseBusy = false; $('closeYes').disabled = false; renderSales(); }
   }
 
   async function addItem(e) {
@@ -1637,6 +1764,13 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
   }
 
   /* ---------- events ---------- */
+  $('salesChannels').addEventListener('click', function (e) {
+    var link = e.target.closest('a'); if (!link) return;
+    if (link.getAttribute('aria-current') === 'page') { e.preventDefault(); return; }
+    if (state.editId || Object.keys(state.qty).some(function (key) { return state.qty[key] > 0; }) || $('cust').value.trim() || $('note').value.trim()) {
+      if (!window.confirm('Switch order channel? Unsaved order changes will be discarded.')) e.preventDefault();
+    }
+  });
   document.querySelector('.tabs').addEventListener('click', function (e) {
     var b = e.target.closest('[data-tab]'); if (!b) return;
     if (state.editId && b.dataset.tab !== 'new') endEdit();
@@ -1843,7 +1977,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     savePrefs(); applyTheme(); render();
   });
   $('receiptLogoUpload').addEventListener('change', async function () {
-    if (!canCorrectShifts() || sharedLogoSaving) return;
+    if (!canManageReceiptLogo() || sharedLogoSaving) return;
     var file = this.files && this.files[0]; if (!file) return;
     var status = $('receiptLogoStatus'); status.hidden = false;
     var error = receiptLogoFileError(file);
@@ -1857,7 +1991,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     finally { this.value = ''; sharedLogoSaving = false; renderSettings(); }
   });
   $('resetReceiptLogo').addEventListener('click', async function () {
-    if (!canCorrectShifts() || sharedLogoSaving) return;
+    if (!canManageReceiptLogo() || sharedLogoSaving) return;
     var status = $('receiptLogoStatus'); status.hidden = false;
     sharedLogoSaving = true; renderSettings(); status.textContent = 'Restoring logo for all devices…';
     try { await saveSharedReceiptLogo('', true); status.textContent = 'Rooster Berg logo restored for all devices.'; }
@@ -1865,7 +1999,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     finally { sharedLogoSaving = false; renderSettings(); }
   });
   $('receiptLogo').addEventListener('change', async function () {
-    if (!canCorrectShifts() || sharedLogoSaving) return;
+    if (!canManageReceiptLogo() || sharedLogoSaving) return;
     var enabled = this.value !== 'off', status = $('receiptLogoStatus'); status.hidden = false;
     sharedLogoSaving = true; renderSettings(); status.textContent = 'Saving logo setting…';
     try { await saveSharedReceiptLogo(customReceiptLogo, enabled); status.textContent = 'Logo setting saved for all devices.'; }
@@ -1883,6 +2017,10 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
   });
 
   /* ---------- start ---------- */
+  scheduleMidnightClose();
+  setInterval(queueAutoClose, 30000);
+  window.addEventListener('online', queueAutoClose);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden) { queueAutoClose(); scheduleMidnightClose(); } });
   applyTheme();
   $('today').textContent = new Date().toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' });
   render();
@@ -2055,6 +2193,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
         state.auth = 'in'; db = fs; state.loaded = false;
         render(); subscribe(); watchSession(user);
       } else {
+        otherChannelOrders = [];
         customReceiptLogo = ''; sharedLogoEnabled = true; sharedLogoReady = false;
         db = null; state.auth = 'out'; state.loaded = false; state.worker = false; state.manager = false; state.userEmail = '';
         if (state.tab === 'settings') state.tab = state.prevTab || 'new';

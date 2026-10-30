@@ -92,7 +92,52 @@ SHARED RECEIPT LOGO — REQUIRED SETUP
 3. Sign in as owner; Settings > Receipt printer > Choose a new logo.
 4. Upload the logo once (PNG/JPG/WebP, up to 700 KB).
 The logo, restore action and show/hide setting now sync to all signed-in devices.
-Only the owner can change them. Offline devices get updates when reconnected.
+The owner and manager can change them. Offline devices get updates when reconnected.
 An older device-only logo must be uploaded once again by the owner to share it.
 Paper size, spacing, shop name and footer message remain device-specific.
 No orders, shifts, payment history or passwords are changed by this update.
+
+MANAGER SHARED LOGO ACCESS
+Publish the included firestore.rules and upload all website files to GitHub.
+Owner and manager (samer@gmail.com) can now upload, restore or show/hide the
+shared receipt logo in Settings > Receipt printer. Workers can view and print it.
+Logo changes sync across devices. Other role permissions stay the same.
+
+AUTOMATIC DAY CLOSING
+Sales close at 00:00 in Asia/Tbilisi (Georgia time), regardless of device time zone.
+Keep at least one signed-in device open and online for midnight closing. If all
+devices are closed/offline, the app catches up when opened and connected again.
+Finished orders from earlier calendar dates are archived
+to Days with their full details and totals. New-day orders remain active.
+Worker shifts are NOT ended. Late offline orders are archived after they sync.
+Unfinished orders stay active until marked done, then join their original day.
+Multiple devices can close safely: each archive and its order removals occur in
+one transaction. Large days/late arrivals can have multiple entries in Days.
+Manual Close day remains available and now uses the same safe transactions.
+No new Firestore rule changes are needed if the previous rules are published.
+Upload all website files and refresh each device once.
+
+KEEP UNFINISHED ORDERS AFTER MIDNIGHT
+Upload all website files, publish the included firestore.rules, and refresh all
+devices. At midnight only finished orders are archived. Unfinished orders stay
+in Orders with their original date displayed. Mark an earlier order done and
+it joins the automatic archive for that original date; its total is added there.
+The update happens when online, normally within a few seconds.
+Manual Close day now also keeps unfinished orders active.
+Very large days may need extra archive parts. Existing historical entries remain
+unchanged, including archives made by older releases.
+
+BOLT FOOD CHANNEL
+Upload ALL files, including bolt.html, to your existing GitHub Pages folder.
+Publish the included firestore.rules, then refresh all devices.
+Use Restaurant / Bolt Food tabs at the top to switch channels.
+Bolt Food has a separate empty menu (Bolt menu tab), orders, totals and Days
+history. Owner and manager can add/edit/remove Bolt menu items. Workers can
+enter and manage Bolt orders. No restaurant menu items or orders are copied.
+Both channels close finished orders at 00:00 Georgia time. Either channel can
+process closing for both while a signed-in device is open and online.
+Unfinished orders stay active; when marked done later, they join their original
+date in that channel's history. Manual Close day affects the selected channel.
+Shifts, payments, login accounts and shared receipt logo remain shared.
+Bolt Food receipts are labelled BOLT FOOD ORDER. Orders are entered manually;
+there is no automatic connection to the Bolt Food service.
