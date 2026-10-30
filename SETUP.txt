@@ -41,3 +41,22 @@ This changes the shared login for everyone using that same email account.
 No additional Firestore rule changes are needed for this feature.
 Passwords are sent to Firebase Authentication; they are not saved in the
 app's Firestore database or local storage.
+
+TABLET DOUBLE-TAP UPDATE
+Double-tapping no longer triggers page zoom in supported browsers.
+Normal scrolling and pinch-to-zoom remain available.
+Upload the updated website files to GitHub and refresh the app.
+No new Firebase rules changes are needed for this update.
+
+OWNER: LOG OUT EVERYONE AND UPDATE
+Publish the included firestore.rules and upload the website files to GitHub.
+All devices must load this release once before they can receive logout requests.
+For future updates, wait for GitHub Pages deployment to finish, then use
+Settings > Account > App updates > Log out everyone and update. Confirm the action.
+This signs out the owner too. Unsaved forms/orders may be lost. Saved records stay.
+Connected devices sign out and reload. Offline/suspended devices respond when
+they reconnect/resume and read the server request. Users then sign in again.
+A cache-busting page URL requests the deployed website; ensure deployment is
+finished before using this option. Older app versions without the listener need
+a manual refresh first. This is app-managed logout, not Firebase Admin token
+revocation; it does not remove accounts or change their passwords.

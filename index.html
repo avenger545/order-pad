@@ -10,6 +10,8 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 <style>
 :root { color-scheme: light; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+/* Prevent double-tap zoom while allowing scrolling and pinch zoom. */
+html, body { touch-action: manipulation; }
 body { margin: 0; }
 img { max-width: 100%; }
 [hidden] { display: none !important; }
@@ -550,6 +552,12 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
           <div class="sh-actions"><button class="btn primary" id="savePassword" type="submit">Save password</button><button class="btn" id="cancelPassword" type="button">Cancel</button></div>
         </form>
         <p class="muted" id="passwordStatus" role="status" hidden></p>
+        <div id="ownerSessionControls" hidden>
+          <h3>App updates</h3>
+          <p class="muted">After publishing an update, sign everyone out and reload their app. This includes you. Offline devices respond when they reconnect.</p>
+          <button class="btn danger" id="logoutEveryone" type="button">Log out everyone and update</button>
+          <p class="muted" id="logoutEveryoneStatus" role="status" hidden></p>
+        </div>
         <button class="btn" id="signOut" type="button" hidden>Sign out</button>
       </div>
       <p class="foot">Theme, text size, shop name, currency and receipt width are saved on this device only.</p>
@@ -1198,6 +1206,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     f.textContent = msg;
     $('signOut').hidden = !(state.mode === 'firebase' && state.auth === 'in');
     $('openPassword').hidden = $('signOut').hidden;
+    $('ownerSessionControls').hidden = !canCorrectShifts();
   }
 
   function render() {
@@ -1776,6 +1785,16 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     return user.uid;
   }
 
+  function sessionNeedsLogout(authTime, cutoffMillis) {
+    var signedIn = Date.parse(authTime);
+    return Number.isFinite(signedIn) && Number.isFinite(cutoffMillis) && signedIn <= cutoffMillis;
+  }
+  function updateReloadUrl(cutoffMillis) {
+    var url = new URL(window.location.href);
+    url.searchParams.set('appUpdate', String(cutoffMillis));
+    return url.href;
+  }
+
   function startFirebase() {
     state.mode = 'firebase';
     var auth, fs;
@@ -1787,6 +1806,55 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     } catch (e) { state.auth = 'error'; render(); return; }
     try { fs.enablePersistence({ synchronizeTabs: true }).catch(function () {}); } catch (e) {}
     state.signOut = function () { return auth.signOut(); };
+    var stopSessionWatch = null, forcingLogout = false, sessionWatchVersion = 0;
+    async function logoutAndRefresh(cutoffMillis) {
+      if (forcingLogout) return;
+      forcingLogout = true;
+      try {
+        await auth.signOut();
+        try { sessionStorage.setItem('orderpad.updateNotice', '1'); } catch (e) {}
+        window.location.replace(updateReloadUrl(cutoffMillis));
+      } catch (e) { forcingLogout = false; toast('Could not sign out. Check your connection and try again.'); }
+    }
+    function watchSession(user) {
+      var version = sessionWatchVersion;
+      stopSessionWatch = fs.collection('appControl').doc('session').onSnapshot({ includeMetadataChanges: true }, async function (snap) {
+        if (!snap.exists || snap.metadata.hasPendingWrites || snap.metadata.fromCache || forcingLogout) return;
+        var stamp = snap.data().logoutBefore;
+        if (!stamp || typeof stamp.toMillis !== 'function') return;
+        try {
+          var token = await user.getIdTokenResult();
+          if (version === sessionWatchVersion && auth.currentUser && auth.currentUser.uid === user.uid && sessionNeedsLogout(token.authTime, stamp.toMillis())) {
+            await logoutAndRefresh(stamp.toMillis());
+          }
+        } catch (e) { toast('Session update check failed. Sign out and reopen the app if an update was requested.'); }
+      }, function () {
+        if (canCorrectShifts()) {
+          $('logoutEveryoneStatus').textContent = 'Session updates unavailable. Publish the included Firebase rules, then reload.';
+          $('logoutEveryoneStatus').hidden = false;
+        }
+      });
+    }
+    $('logoutEveryone').addEventListener('click', async function () {
+      if (!canCorrectShifts() || $('logoutEveryone').disabled) return;
+      if (!navigator.onLine) { toast('Connect to the internet before logging everyone out.'); return; }
+      if (!window.confirm('Log out everyone, including you, and reload their app? Unsaved orders may be lost.')) return;
+      $('logoutEveryone').disabled = true;
+      $('logoutEveryoneStatus').textContent = 'Sending logout request…';
+      $('logoutEveryoneStatus').hidden = false;
+      try {
+        await fs.runTransaction(async function (transaction) {
+          transaction.set(fs.collection('appControl').doc('session'), {
+            logoutBefore: firebase.firestore.FieldValue.serverTimestamp()
+          });
+        });
+        $('logoutEveryoneStatus').textContent = 'Request sent. Connected users will sign out; offline users will sign out when they reconnect.';
+      } catch (e) {
+        $('logoutEveryoneStatus').textContent = e && e.code === 'permission-denied'
+          ? 'Permission denied. Sign in as owner and publish the updated Firebase rules.'
+          : 'Request failed. Check your connection and try again.';
+      } finally { $('logoutEveryone').disabled = false; }
+    });
     $('loginForm').addEventListener('submit', async function (e) {
       e.preventDefault();
       var email = $('loginEmail').value.trim(), pw = $('loginPass').value, err = $('loginErr');
@@ -1831,6 +1899,8 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     window.addEventListener('online', renderFoot);
     window.addEventListener('offline', renderFoot);
     auth.onAuthStateChanged(function (user) {
+      sessionWatchVersion++;
+      if (stopSessionWatch) { stopSessionWatch(); stopSessionWatch = null; }
       if (!user || user.email !== state.userEmail) resetPasswordForm();
       unsubs.forEach(function (u) { try { u(); } catch (e) {} });
       unsubs = [];
@@ -1841,7 +1911,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
         state.worker = !state.manager && (!email || email !== String(FB_CFG.ownerEmail || '').toLowerCase());
         if (state.worker && state.tab === 'items') state.tab = 'new';
         state.auth = 'in'; db = fs; state.loaded = false;
-        render(); subscribe();
+        render(); subscribe(); watchSession(user);
       } else {
         db = null; state.auth = 'out'; state.loaded = false; state.worker = false; state.manager = false; state.userEmail = '';
         if (state.tab === 'settings') state.tab = state.prevTab || 'new';
@@ -1849,6 +1919,13 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
         state.qty = {}; state.editId = null; state.draft = null; state.closing = false;
         $('cust').value = ''; $('note').value = '';
         render();
+        try {
+          if (sessionStorage.getItem('orderpad.updateNotice')) {
+            sessionStorage.removeItem('orderpad.updateNotice');
+            $('loginErr').textContent = 'The owner requested an app update. Please sign in again.';
+            $('loginErr').hidden = false;
+          }
+        } catch (e) {}
       }
     });
   }
