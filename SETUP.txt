@@ -60,3 +60,12 @@ A cache-busting page URL requests the deployed website; ensure deployment is
 finished before using this option. Older app versions without the listener need
 a manual refresh first. This is app-managed logout, not Firebase Admin token
 revocation; it does not remove accounts or change their passwords.
+
+LONGER RECEIPTS AND CUSTOM MESSAGE
+Settings > Receipt printer > Receipt spacing: Compact, Roomy, or Extra space.
+Roomy is the new default, with more space between items and a bottom paper margin.
+Type your message in Message at the bottom of receipts. Enter creates a new line.
+The message replaces Thank you!; leave it blank to omit the footer message.
+Settings save automatically on this printing device; configure other devices
+separately. This affects Order Pad's Print receipt output. Other printing apps
+may override the layout. No additional Firestore rules changes are required.

@@ -471,20 +471,21 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
   @page { size: auto; margin: 0; }
   html, body { background: white !important; color: black !important; margin: 0 !important; padding: 0 !important; min-width: 0 !important; }
   body > * { display: none !important; }
-  body > #thermalReceipt { display: block !important; margin: 0; padding: 3mm 2mm; box-sizing: border-box; font: 12px/1.4 Arial, sans-serif; color: black; background: white; overflow-wrap: anywhere; }
+  body > #thermalReceipt { display: block !important; margin: 0; padding: 4mm 2mm 10mm; box-sizing: border-box; font: 12px/1.5 Arial, sans-serif; color: black; background: white; overflow-wrap: anywhere; }
   #thermalReceipt * { color: black !important; background: transparent !important; box-shadow: none !important; }
   #thermalReceipt header, #thermalReceipt footer { text-align: center; display: block; padding: 0; margin: 0; position: static; }
   #thermalReceipt h1 { font-size: 17px; margin: 0 0 4px; }
   #thermalReceipt p { margin: 6px 0; }
   #thermalReceipt hr { border: 0; border-top: 1px dashed black; margin: 8px 0; }
   #thermalReceipt table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-  #thermalReceipt th, #thermalReceipt td { padding: 4px 0; text-align: left; vertical-align: top; }
+  #thermalReceipt th, #thermalReceipt td { padding: var(--receipt-item-gap, 3mm) 0; text-align: left; vertical-align: top; }
   #thermalReceipt th:last-child, #thermalReceipt td:last-child { width: 35%; text-align: right; }
   #thermalReceipt td:first-child { padding-right: 5px; }
   #thermalReceipt tr { break-inside: avoid; }
   #thermalReceipt small { font-size: 10px; }
   #thermalReceipt .receipt-total { display: flex; justify-content: space-between; gap: 8px; font-size: 14px; }
   #thermalReceipt .receipt-note { white-space: pre-wrap; }
+  #thermalReceipt footer { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 4mm; line-height: 1.6; }
 }
 </style>
 </head>
@@ -536,6 +537,13 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
         <div class="field"><label for="receiptWidth">Paper width</label>
           <select id="receiptWidth"><option value="58">58 mm</option><option value="80">80 mm</option></select>
         </div>
+        <div class="field"><label for="receiptSpacing">Receipt spacing</label>
+          <select id="receiptSpacing"><option value="compact">Compact</option><option value="roomy">Roomy (longer receipt)</option><option value="extra">Extra space</option></select>
+        </div>
+        <div class="field"><label for="receiptFooter">Message at the bottom of receipts</label>
+          <textarea id="receiptFooter" rows="4" maxlength="500" placeholder="Thank you!&#10;Visit us again soon."></textarea>
+        </div>
+        <p class="muted">Receipt settings save automatically on this device. Use Enter for a new line; leave the message empty to print no footer message.</p>
         <p class="muted">Choose your thermal printer in the print window. Use matching paper size, 100% scale, no margins, and turn off headers and footers.</p>
       </div>
       <div class="setcard">
@@ -748,7 +756,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
   var FB_ON = !!(FB_CFG && FB_CFG.apiKey && FB_CFG.projectId && String(FB_CFG.apiKey).indexOf('PASTE') !== 0);
   var unsubs = [];
   var PREF_KEY = 'orderpad.prefs';
-  var prefs = { palette: 'sunny', mode: 'auto', size: 'normal', currency: 'none', shopName: '', receiptWidth: '80' };
+  var prefs = { palette: 'sunny', mode: 'auto', size: 'normal', currency: 'none', shopName: '', receiptWidth: '80', receiptSpacing: 'roomy', receiptFooter: 'Thank you!' };
   try {
     var sp = JSON.parse(localStorage.getItem(PREF_KEY) || 'null');
     if (sp && typeof sp === 'object') Object.keys(prefs).forEach(function (k) { if (typeof sp[k] === 'string') prefs[k] = sp[k]; });
@@ -1091,7 +1099,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
       }).join('') + '</tbody></table><hr>' +
       (typeof o.total === 'number' ? '<div class="receipt-total"><b>' + (allPriced ? 'Total' : 'Priced items total') + '</b><b>' + esc(money(o.total)) + '</b></div>' : '<p>Total not set</p>') +
       (o.note ? '<hr><p class="receipt-note">Note: ' + esc(o.note) + '</p>' : '') +
-      '<hr><footer>Thank you!</footer>';
+      (prefs.receiptFooter.trim() ? '<hr><footer>' + esc(prefs.receiptFooter) + '</footer>' : '');
   }
 
   function printOrder(o) {
@@ -1101,6 +1109,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
       document.body.appendChild(receipt);
     }
     receipt.style.width = prefs.receiptWidth === '58' ? '48mm' : '70mm';
+    receipt.style.setProperty('--receipt-item-gap', ({ compact: '1mm', roomy: '3mm', extra: '5mm' })[prefs.receiptSpacing] || '3mm');
     receipt.innerHTML = receiptHtml(o);
     try { window.print(); } catch (e) { toast('Printing is unavailable. Open the app in your browser and try again.'); }
   }
@@ -1193,6 +1202,8 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     if (document.activeElement !== $('shopName')) $('shopName').value = prefs.shopName;
     $('shopTitle').textContent = prefs.shopName || 'Order Pad';
     $('receiptWidth').value = prefs.receiptWidth === '58' ? '58' : '80';
+    $('receiptSpacing').value = ['compact', 'roomy', 'extra'].indexOf(prefs.receiptSpacing) >= 0 ? prefs.receiptSpacing : 'roomy';
+    if (document.activeElement !== $('receiptFooter')) $('receiptFooter').value = prefs.receiptFooter;
     $('acctText').textContent = state.mode === 'firebase' && state.userEmail
       ? 'Signed in as ' + state.userEmail + (state.worker ? ' (store login)' : (state.manager ? ' (manager)' : ' (owner)'))
       : (state.mode === 'cloud' ? 'Connected through Claude.' : 'Data is stored on this device only.');
@@ -1732,6 +1743,8 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     else return;
     savePrefs(); applyTheme(); render();
   });
+  $('receiptFooter').addEventListener('input', function () { prefs.receiptFooter = this.value.slice(0, 500); savePrefs(); });
+  $('receiptSpacing').addEventListener('change', function () { prefs.receiptSpacing = this.value; savePrefs(); });
   $('receiptWidth').addEventListener('change', function () {
     prefs.receiptWidth = this.value === '58' ? '58' : '80'; savePrefs();
   });
