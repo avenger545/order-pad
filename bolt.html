@@ -13,6 +13,9 @@
 /* Prevent double-tap zoom while allowing scrolling and pinch zoom. */
 html, body { touch-action: manipulation; }
 body { margin: 0; }
+.order-source { display:inline-block; margin-bottom:8px; padding:4px 10px; border-radius:6px; font-size:12px; font-weight:700; }
+.order-source.restaurant { color:#7b3700; background:#fff0dc; }
+.order-source.bolt { color:#075c2b; background:#dff7e8; }
 .sales-channels { display:flex; gap:8px; padding:8px 12px; }
 .sales-channels a { flex:1; text-align:center; padding:10px 8px; border:1px solid var(--line); border-radius:10px; text-decoration:none; color:var(--ink); font-weight:700; }
 .sales-channels a[aria-current="page"] { background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
@@ -508,11 +511,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
       <h1 id="shopTitle">Order Pad</h1>
       <p class="date mono" id="today"></p>
     </div>
-    <nav id="salesChannels" class="sales-channels" aria-label="Order channel" hidden>
-      <a id="restaurantChannel" href="./index.html">Restaurant</a>
-      <a id="boltChannel" href="./bolt.html">Bolt Food</a>
-    </nav>
-    <p id="channelHint" class="muted" style="text-align:center;margin:4px 12px 10px" hidden></p>
+    <p id="channelSummary" class="muted" style="text-align:center;margin:8px" hidden></p>
     <nav class="tabs" role="tablist" aria-label="Sections">
       <button class="tab" role="tab" id="tab-new" data-tab="new" aria-selected="true">New</button>
       <button class="tab" role="tab" id="tab-orders" data-tab="orders" aria-selected="false">Orders <span class="badge" id="openBadge" hidden>0</span></button>
@@ -611,6 +610,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     </section>
 
     <section id="view-new" aria-labelledby="tab-new">
+      <div class="field"><label for="newOrderChannel">Order from</label><select id="newOrderChannel"><option value="restaurant">Restaurant</option><option value="bolt">Bolt Food</option></select></div>
       <div class="editbar" id="editBar" hidden>
         <span>Editing order <b class="mono" id="editNo"></b></span>
         <button class="btn sm" id="cancelEdit" type="button">Cancel</button>
@@ -642,6 +642,8 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     </section>
 
     <section id="view-orders" aria-labelledby="tab-orders" hidden>
+      <div class="chips" id="orderChannelFilters"></div>
+      <div class="field"><label for="closeChannel">Daily totals / Close day for</label><select id="closeChannel"><option value="restaurant">Restaurant</option><option value="bolt">Bolt Food</option></select></div>
       <div class="sales" id="sales">
         <div class="sales-main">
           <span class="lbl">This day so far</span>
@@ -663,6 +665,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     </section>
 
     <section id="view-days" aria-labelledby="tab-days" hidden>
+      <div class="field"><label for="historyChannel">Day history for</label><select id="historyChannel"><option value="restaurant">Restaurant</option><option value="bolt">Bolt Food</option></select></div>
       <div class="allsales" id="allSales" hidden>
         <div class="sales-main">
           <span class="lbl">All closed days</span>
@@ -746,6 +749,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     </section>
 
     <section id="view-items" aria-labelledby="tab-items" hidden>
+      <div class="field"><label for="menuChannel">Menu to edit</label><select id="menuChannel"><option value="restaurant">Restaurant</option><option value="bolt">Bolt Food</option></select></div>
       <form class="add" id="addForm" autocomplete="off">
         <div class="field">
           <label for="itemName">Item name</label>
@@ -777,8 +781,15 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
   var FB_ON = !!(FB_CFG && FB_CFG.apiKey && FB_CFG.projectId && String(FB_CFG.apiKey).indexOf('PASTE') !== 0);
   var unsubs = [];
   var SALES_CHANNEL = /\/bolt\.html$/.test(window.location.pathname) ? 'bolt' : 'restaurant';
-  var OTHER_CHANNEL = SALES_CHANNEL === 'bolt' ? 'restaurant' : 'bolt';
-  var otherChannelOrders = [];
+  var orderChannelFilter = 'all', dayChannel = 'restaurant';
+  var channelData = { restaurant: { items: [], orders: [], days: [] }, bolt: { items: [], orders: [], days: [] } };
+  var newChannelDrafts = { restaurant: null, bolt: null };
+  function recordChannel(record) { return record._channel === 'bolt' ? 'bolt' : 'restaurant'; }
+  function rawSalesId(id) { return String(id).replace(/^(restaurant|bolt):/, ''); }
+  function channelFromId(id) { return String(id).indexOf('bolt:') === 0 ? 'bolt' : 'restaurant'; }
+  function isSalesCollection(name) { return ['items', 'orders', 'days'].indexOf(name) >= 0; }
+  function channelRecords(records, channel) { return records.filter(function (record) { return recordChannel(record) === channel; }); }
+  function channelName(channel) { return channel === 'bolt' ? 'Bolt Food' : 'Restaurant'; }
   function salesCollection(name, channel) {
     var selected = channel || SALES_CHANNEL;
     if (selected === 'bolt' && ['items', 'orders', 'days'].indexOf(name) >= 0) return 'bolt' + name.charAt(0).toUpperCase() + name.slice(1);
@@ -892,8 +903,10 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
   async function put(coll, obj) {
     var id = obj.id, data = Object.assign({}, obj);
     delete data.id;
+    var channel = obj._channel || (String(id).indexOf(':') >= 0 ? channelFromId(id) : SALES_CHANNEL);
+    delete data._channel;
     if (db) {
-      var w = db.collection(salesCollection(coll)).doc(id).set(data);
+      var w = db.collection(salesCollection(coll, channel)).doc(isSalesCollection(coll) ? rawSalesId(id) : id).set(data);
       if (state.mode === 'firebase') watchWrite(w); else await w;
     } else {
       var arr = state[coll], i = arr.findIndex(function (x) { return x.id === id; });
@@ -903,7 +916,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
   }
   async function remove(coll, id) {
     if (db) {
-      var w2 = db.collection(salesCollection(coll)).doc(id).delete();
+      var w2 = db.collection(salesCollection(coll, channelFromId(id))).doc(isSalesCollection(coll) ? rawSalesId(id) : id).delete();
       if (state.mode === 'firebase') watchWrite(w2); else await w2;
     } else {
       state[coll] = state[coll].filter(function (x) { return x.id !== id; });
@@ -956,14 +969,22 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
   }
   function subscribe() {
     if (state.mode === 'firebase') subscribeReceiptBranding();
-    var got = { items: false, orders: false, days: false, shifts: false, workers: false, payments: false };
+    var got = { items: false, orders: false, days: false, boltItems: false, boltOrders: false, boltDays: false, shifts: false, workers: false, payments: false };
     var limited = state.mode === 'firebase' && state.worker;
-    function done() { state.loaded = got.items && got.orders && got.days && got.shifts && got.workers && got.payments; render(); if (state.loaded) queueAutoClose(); }
+    function done() { state.loaded = got.items && got.orders && got.days && got.boltItems && got.boltOrders && got.boltDays && got.shifts && got.workers && got.payments; render(); if (state.loaded) queueAutoClose(); }
     function fail(e) { state.loaded = true; render(); toast(e && e.code === 'permission-denied' ? 'This login is not allowed to read the data. Check the Firestore rules.' : 'Could not load your saved data.'); }
-    unsubs.push(db.collection(salesCollection('items')).onSnapshot(function (s) { state.items = fromSnap(s); got.items = true; done(); }, fail));
-    unsubs.push(db.collection(salesCollection('orders')).onSnapshot(function (s) { state.orders = fromSnap(s); got.orders = true; done(); }, fail));
-    unsubs.push(db.collection(salesCollection('days')).onSnapshot(function (s) { state.days = fromSnap(s); got.days = true; done(); }, fail));
-    unsubs.push(db.collection(salesCollection('orders', OTHER_CHANNEL)).onSnapshot(function (snap) { otherChannelOrders = fromSnap(snap); queueAutoClose(); }, function () { toast('Could not load the other order channel. Publish the updated Firebase rules and refresh.'); }));
+    ['restaurant', 'bolt'].forEach(function (channel) {
+      ['items', 'orders', 'days'].forEach(function (collection) {
+        var name = salesCollection(collection, channel);
+        unsubs.push(db.collection(name).onSnapshot(function (snap) {
+          channelData[channel][collection] = fromSnap(snap).map(function (record) {
+            return Object.assign({}, record, { id: channel + ':' + record.id, _channel: channel });
+          });
+          state[collection] = channelData.restaurant[collection].concat(channelData.bolt[collection]);
+          got[name] = true; done();
+        }, fail));
+      });
+    });
     var sq = db.collection('shifts');
     if (limited) sq = sq.where('end', '==', null);
     unsubs.push(sq.onSnapshot(function (s) { state.shifts = fromSnap(s); got.shifts = true; done(); }, fail));
@@ -984,7 +1005,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
   function disarm() { state.armed = null; clearTimeout(armTimer); }
 
   /* ---------- pick list (items, plus lines of an order being edited) ---------- */
-  function sortedItems() { return state.items.slice().sort(function (a, b) { return (a.createdAt || 0) - (b.createdAt || 0); }); }
+  function sortedItems() { return channelRecords(state.items, SALES_CHANNEL).slice().sort(function (a, b) { return (a.createdAt || 0) - (b.createdAt || 0); }); }
   function pickList() {
     var list = sortedItems().map(function (i) {
       return { key: i.id, name: i.name, price: typeof i.price === 'number' ? i.price : null };
@@ -1010,7 +1031,8 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
   function startEdit(id) {
     var o = state.orders.find(function (x) { return x.id === id; });
     if (!o) return;
-    if (!state.editId) state.draft = { cust: $('cust').value, note: $('note').value, qty: state.qty };
+    if (!state.editId) state.draft = { cust: $('cust').value, note: $('note').value, qty: state.qty, channel: SALES_CHANNEL };
+    SALES_CHANNEL = recordChannel(o);
     state.editId = id;
     state.qty = {};
     var list = pickList();
@@ -1030,6 +1052,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     var d = state.draft;
     state.editId = null;
     state.draft = null;
+    if (d && d.channel) SALES_CHANNEL = d.channel;
     state.qty = d ? d.qty : {};
     $('cust').value = d ? d.cust : '';
     $('note').value = d ? d.note : '';
@@ -1037,12 +1060,13 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
 
   /* ---------- rendering ---------- */
   function renderTabs() {
-    $('salesChannels').hidden = state.auth !== 'in' || state.tab === 'settings';
-    $('restaurantChannel').setAttribute('aria-current', SALES_CHANNEL === 'restaurant' ? 'page' : 'false');
-    $('boltChannel').setAttribute('aria-current', SALES_CHANNEL === 'bolt' ? 'page' : 'false');
-    $('channelHint').hidden = state.auth !== 'in' || state.tab === 'settings';
-    $('channelHint').textContent = SALES_CHANNEL === 'bolt' ? 'Bolt Food · separate menu, orders and daily totals' : 'Restaurant orders';
-    $('tab-items').textContent = SALES_CHANNEL === 'bolt' ? 'Bolt menu' : 'Items';
+    $('channelSummary').hidden = state.auth !== 'in' || state.tab === 'settings';
+    $('channelSummary').textContent = 'Restaurant: ' + channelRecords(state.orders, 'restaurant').filter(function (o) { return o.status !== 'done'; }).length + ' open · Bolt Food: ' + channelRecords(state.orders, 'bolt').filter(function (o) { return o.status !== 'done'; }).length + ' open';
+    $('newOrderChannel').value = SALES_CHANNEL; $('newOrderChannel').disabled = !!state.editId;
+    $('menuChannel').value = SALES_CHANNEL;
+    $('closeChannel').value = dayChannel; $('closeChannel').disabled = dayCloseBusy;
+    $('historyChannel').value = dayChannel;
+    $('tab-items').textContent = 'Menus';
     ['new', 'orders', 'days', 'shifts', 'items'].forEach(function (t) {
       $('tab-' + t).setAttribute('aria-selected', String(state.tab === t));
       $('view-' + t).hidden = state.auth !== 'in' || state.tab !== t || (t === 'items' && state.worker);
@@ -1077,7 +1101,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
   }
   function renderPicker() {
     var ul = $('picker');
-    $('noItems').hidden = !(state.loaded && state.items.length === 0 && !state.editId);
+    $('noItems').hidden = !(state.loaded && sortedItems().length === 0 && !state.editId);
     $('goItems').hidden = state.worker;
     $('noItemsText').textContent = state.worker ? 'No items yet. Ask the owner to add the items.' : 'Add what you sell first, then you can take orders.';
     if (!state.loaded) { ul.innerHTML = '<li class="loading">Loading your items…</li>'; return; }
@@ -1096,8 +1120,9 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
   }
 
   function renderSales() {
-    var s = sums(state.orders);
-    var open = state.orders.filter(function (o) { return o.status !== 'done'; }).length;
+    var selectedOrders = channelRecords(state.orders, dayChannel);
+    var s = sums(selectedOrders);
+    var open = selectedOrders.filter(function (o) { return o.status !== 'done'; }).length;
     $('sales').hidden = !state.loaded;
     $('salesAmt').textContent = plural(s.count, 'order', 'orders');
     $('salesSub').textContent = s.count === 0 ? 'Nothing to close yet' : (open === 0 ? 'All done' : open + ' open · ' + (s.count - open) + ' done');
@@ -1105,7 +1130,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     var panel = $('closePanel');
     panel.hidden = !(state.closing && s.count > 0);
     if (!panel.hidden) {
-      var completed = sums(state.orders.filter(function (o) { return o.status === 'done'; }));
+      var completed = sums(selectedOrders.filter(function (o) { return o.status === 'done'; }));
       var txt = 'Archive ' + plural(completed.count, 'finished order', 'finished orders') + (completed.priced ? ' totaling ' + money(completed.total) : '') + '? ';
       if (open) txt += plural(open, 'unfinished order stays', 'unfinished orders stay') + ' in the active list. ';
       txt += 'Earlier orders are saved under their original date in Days.';
@@ -1114,7 +1139,8 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
   }
 
   function renderOrders() {
-    var all = state.orders.slice().sort(byNew);
+    $('orderChannelFilters').innerHTML = [['all', 'All'], ['restaurant', 'Restaurant'], ['bolt', 'Bolt Food']].map(function (entry) { return '<button class="chip" type="button" data-channel="' + entry[0] + '" aria-pressed="' + (orderChannelFilter === entry[0]) + '">' + entry[1] + '</button>'; }).join('');
+    var all = (orderChannelFilter === 'all' ? state.orders : channelRecords(state.orders, orderChannelFilter)).slice().sort(byNew);
     var open = all.filter(function (o) { return o.status !== 'done'; });
     var done = all.filter(function (o) { return o.status === 'done'; });
     var chips = [['open', 'Open', open.length], ['done', 'Done', done.length], ['all', 'All', all.length]];
@@ -1140,6 +1166,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
       }).join('');
       var key = 'order:' + o.id, armed = state.armed === key;
       return '<li class="order' + (isDone ? ' done' : '') + '" data-id="' + esc(o.id) + '">' +
+        '<div class="order-source ' + (recordChannel(o) === 'bolt' ? 'bolt' : 'restaurant') + '">' + channelName(recordChannel(o)) + '</div>' +
         '<div class="o-head"><div class="o-id"><span class="o-no mono">#' + pad(o.no || 0) + '</span><h3>' + esc(o.customer || 'No name') + '</h3></div>' +
         '<span class="pill ' + (isDone ? 'done' : 'open') + '">' + (isDone ? 'Done' : 'Open') + '</span></div>' +
         (businessDateKey(o.createdAt) && businessDateKey(o.createdAt) < businessDateKey(Date.now()) ? '<p class="o-note">From ' + esc(businessDateKey(o.createdAt)) + ' · moves to that day when marked done</p>' : '') +
@@ -1189,7 +1216,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
   function receiptHtml(o) {
     var lines = o.lines || [];
     var allPriced = lines.length > 0 && lines.every(function (l) { return typeof l.price === 'number'; });
-    return '<header>' + (sharedLogoEnabled ? '<img class="receipt-logo" src="' + esc(receiptLogoSource()) + '" alt="Restaurant logo">' : '') + '<h1>' + esc(prefs.shopName || 'Rooster Berg') + '</h1><p>' + (SALES_CHANNEL === 'bolt' ? 'BOLT FOOD ORDER' : 'ORDER RECEIPT') + '</p></header>' +
+    return '<header>' + (sharedLogoEnabled ? '<img class="receipt-logo" src="' + esc(receiptLogoSource()) + '" alt="Restaurant logo">' : '') + '<h1>' + esc(prefs.shopName || 'Rooster Berg') + '</h1><p>' + (recordChannel(o) === 'bolt' ? 'BOLT FOOD ORDER' : 'ORDER RECEIPT') + '</p></header>' +
       '<p><b>Order #' + esc(pad(o.no || 0)) + '</b><br>' +
       (o.createdAt ? esc(new Date(o.createdAt).toLocaleString()) + '<br>' : '') +
       'Customer: ' + esc(o.customer || 'No name') + '</p><hr>' +
@@ -1244,7 +1271,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     return t;
   }
   function renderDays() {
-    var days = state.days.slice().sort(function (a, b) { return (b.closedAt || 0) - (a.closedAt || 0); });
+    var days = channelRecords(state.days, dayChannel).slice().sort(function (a, b) { return (b.closedAt || 0) - (a.closedAt || 0); });
     var ul = $('dayList');
     $('noDays').hidden = !(state.loaded && days.length === 0);
     $('allSales').hidden = !(state.loaded && days.length > 0);
@@ -1300,8 +1327,8 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
 
   function renderItems() {
     var ul = $('itemList');
-    $('noItemList').hidden = !(state.loaded && state.items.length === 0);
-    $('itemsHead').hidden = state.items.length === 0;
+    $('noItemList').hidden = !(state.loaded && sortedItems().length === 0);
+    $('itemsHead').hidden = sortedItems().length === 0;
     if (!state.loaded) { ul.innerHTML = '<li class="loading">Loading your items…</li>'; return; }
     ul.innerHTML = sortedItems().map(function (i) {
       var key = 'item:' + i.id, armed = state.armed === key;
@@ -1400,12 +1427,12 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     }
 
     var todayKey = businessDateKey(Date.now());
-    var no = state.orders.filter(function (x) { return businessDateKey(x.createdAt) === todayKey; }).reduce(function (m, x) { return Math.max(m, x.no || 0); }, 0) + 1;
-    var order = Object.assign({ id: newId(), no: no, status: 'open', createdAt: Date.now() }, fields);
+    var no = state.orders.filter(function (x) { return recordChannel(x) === SALES_CHANNEL && businessDateKey(x.createdAt) === todayKey; }).reduce(function (m, x) { return Math.max(m, x.no || 0); }, 0) + 1;
+    var order = Object.assign({ id: newId(), _channel: SALES_CHANNEL, no: no, status: 'open', createdAt: Date.now() }, fields);
     var ok = await guarded(function () { return put('orders', order); }, 'Order #' + pad(no) + ' saved for ' + customer);
     if (ok) {
       state.qty = {}; $('cust').value = ''; $('note').value = '';
-      state.filter = 'open'; setTab('orders');
+      state.filter = 'open'; orderChannelFilter = 'all'; setTab('orders');
     } else { renderSummary(); }
   }
 
@@ -1441,7 +1468,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
   }
   async function archiveOrderChunk(candidates, closedAt, dateKey, automatic, channel) {
     var archiveDb = db, manualId = automatic ? null : newId();
-    var refs = candidates.map(function (o) { return archiveDb.collection(salesCollection('orders', channel)).doc(o.id); });
+    var refs = candidates.map(function (o) { return archiveDb.collection(salesCollection('orders', channel)).doc(rawSalesId(o.id)); });
     return archiveDb.runTransaction(async function (tx) {
       var snapshots = await Promise.all(refs.map(function (ref) { return tx.get(ref); }));
       var list = [], removeRefs = [];
@@ -1486,7 +1513,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
   }
   async function autoCloseDays() {
     if (dayCloseBusy || state.mode !== 'firebase' || state.auth !== 'in' || !state.loaded || !db || !navigator.onLine) return;
-    var sources = [{ channel: SALES_CHANNEL, orders: state.orders }, { channel: OTHER_CHANNEL, orders: otherChannelOrders }];
+    var sources = ['restaurant', 'bolt'].map(function (channel) { return { channel: channel, orders: channelRecords(state.orders, channel) }; });
     if (!sources.some(function (source) { return Object.keys(dueOrderGroups(source.orders, Date.now())).length; })) return;
     dayCloseBusy = true; renderSales();
     try {
@@ -1507,18 +1534,19 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     } finally { dayCloseBusy = false; renderSales(); }
   }
   async function closeDay() {
-    if (!state.orders.some(function (o) { return o.status === 'done'; }) || dayCloseBusy) return;
+    var closingChannel = dayChannel, selectedOrders = channelRecords(state.orders, closingChannel);
+    if (!selectedOrders.some(function (o) { return o.status === 'done'; }) || dayCloseBusy) return;
     if (state.mode !== 'firebase') { toast('Automatic day closing requires the online app.'); return; }
     if (!navigator.onLine) { toast('Connect to the internet to close the day safely.'); return; }
     dayCloseBusy = true; $('closeYes').disabled = true;
-    var list = state.orders.filter(function (o) { return o.status === 'done'; });
+    var list = selectedOrders.filter(function (o) { return o.status === 'done'; });
     try {
       var groups = {}, count = 0, today = businessDateKey(Date.now());
       list.forEach(function (o) { var key = businessDateKey(o.createdAt) || today; (groups[key] || (groups[key] = [])).push(o); });
       var keys = Object.keys(groups).sort();
       for (var k = 0; k < keys.length; k++) {
         var key = keys[k], chunks = archiveChunks(groups[key]), earlier = key < today;
-        for (var i = 0; i < chunks.length; i++) count += await archiveOrderChunk(chunks[i], earlier ? midnightAfterBusinessDate(key) : Date.now(), key, earlier);
+        for (var i = 0; i < chunks.length; i++) count += await archiveOrderChunk(chunks[i], earlier ? midnightAfterBusinessDate(key) : Date.now(), key, earlier, closingChannel);
       }
       state.closing = false;
       toast(count ? 'Day closed. Orders are saved in Days.' : 'These orders were already closed on another device.');
@@ -1764,13 +1792,24 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
   }
 
   /* ---------- events ---------- */
-  $('salesChannels').addEventListener('click', function (e) {
-    var link = e.target.closest('a'); if (!link) return;
-    if (link.getAttribute('aria-current') === 'page') { e.preventDefault(); return; }
-    if (state.editId || Object.keys(state.qty).some(function (key) { return state.qty[key] > 0; }) || $('cust').value.trim() || $('note').value.trim()) {
-      if (!window.confirm('Switch order channel? Unsaved order changes will be discarded.')) e.preventDefault();
-    }
+  function switchMenuChannel(channel) {
+    if (channel !== 'bolt' && channel !== 'restaurant') return;
+    if (state.editId) { toast('Save or cancel the order edit first.'); renderTabs(); return; }
+    newChannelDrafts[SALES_CHANNEL] = { qty: state.qty, customer: $('cust').value, note: $('note').value };
+    SALES_CHANNEL = channel;
+    var draft = newChannelDrafts[channel];
+    state.qty = draft ? draft.qty : {}; $('cust').value = draft ? draft.customer : ''; $('note').value = draft ? draft.note : '';
+    $('itemName').value = ''; $('itemPrice').value = '';
+    render();
+  }
+  $('newOrderChannel').addEventListener('change', function () { switchMenuChannel(this.value); });
+  $('menuChannel').addEventListener('change', function () { switchMenuChannel(this.value); });
+  $('orderChannelFilters').addEventListener('click', function (e) {
+    var button = e.target.closest('[data-channel]'); if (!button) return;
+    orderChannelFilter = button.dataset.channel; renderOrders();
   });
+  $('closeChannel').addEventListener('change', function () { dayChannel = this.value; state.closing = false; renderSales(); renderTabs(); });
+  $('historyChannel').addEventListener('change', function () { dayChannel = this.value; renderDays(); renderTabs(); });
   document.querySelector('.tabs').addEventListener('click', function (e) {
     var b = e.target.closest('[data-tab]'); if (!b) return;
     if (state.editId && b.dataset.tab !== 'new') endEdit();
@@ -2193,7 +2232,8 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
         state.auth = 'in'; db = fs; state.loaded = false;
         render(); subscribe(); watchSession(user);
       } else {
-        otherChannelOrders = [];
+        channelData = { restaurant: { items: [], orders: [], days: [] }, bolt: { items: [], orders: [], days: [] } };
+        newChannelDrafts = { restaurant: null, bolt: null }; orderChannelFilter = 'all';
         customReceiptLogo = ''; sharedLogoEnabled = true; sharedLogoReady = false;
         db = null; state.auth = 'out'; state.loaded = false; state.worker = false; state.manager = false; state.userEmail = '';
         if (state.tab === 'settings') state.tab = state.prevTab || 'new';

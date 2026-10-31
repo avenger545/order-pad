@@ -141,3 +141,16 @@ date in that channel's history. Manual Close day affects the selected channel.
 Shifts, payments, login accounts and shared receipt logo remain shared.
 Bolt Food receipts are labelled BOLT FOOD ORDER. Orders are entered manually;
 there is no automatic connection to the Bolt Food service.
+
+UNIFIED RESTAURANT AND BOLT ORDERS
+Both channels now appear on one Orders screen. All is selected by default; use
+All / Restaurant / Bolt Food filters. Each order has a colored channel label.
+The header shows open counts for both channels. New > Order from chooses the
+correct menu and prices. Each channel's unsaved new-order draft stays in memory
+while switching channels. Menus > Menu to edit lets management edit either menu.
+Orders > Daily totals / Close day for selects which channel is closed manually.
+Days > Day history for keeps each channel's totals and history separate.
+Midnight closing and carried-over unfinished orders continue for both channels.
+Existing menu items, orders and history stay in their original collections.
+Upload all files and refresh; no additional rules changes beyond the Bolt rules.
+The old bolt.html link also opens the unified interface (Bolt selected for New).
