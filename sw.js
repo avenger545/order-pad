@@ -1,4 +1,4 @@
-const CACHE = 'order-pad-v18-unified-orders';
+const CACHE = 'order-pad-v19-bolt-timer';
 const CORE = ['./', './index.html', './bolt.html', './manifest.json', './icon-192.png', './icon-512.png', './icon-maskable-512.png', './receipt-logo.png'];
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(CORE)).then(() => self.skipWaiting()));

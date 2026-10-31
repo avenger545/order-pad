@@ -342,6 +342,12 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
 .o-lines .lp { font-size: 0.9rem; color: var(--muted); }
 .o-note { margin: 0; padding: 8px 10px; background: var(--bg); border-radius: 6px; font-size: 0.92rem; overflow-wrap: anywhere; }
 .o-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.bolt-timer { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 12px; border-radius:8px; background:#dff7e8; color:#075c2b; font-weight:600; }
+.bolt-timer .bt-label { font-size:0.8rem; text-transform:uppercase; letter-spacing:0.06em; }
+.bolt-timer .bt-time { font-family:var(--font-mono); font-size:1.5rem; font-weight:700; }
+.bolt-timer.warn { background:#ffe68a; color:#7a5200; }
+.bolt-timer.late { background:#fde0dd; color:#b3261e; }
+.bolt-mins { display:flex; gap:8px; flex-wrap:wrap; }
 .o-meta { display: grid; font-size: 0.82rem; color: var(--muted); }
 .o-meta b { color: var(--ink); font-size: 1rem; font-weight: 500; }
 .o-actions { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -632,6 +638,11 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
         <label for="note">Note <span class="opt">optional</span></label>
         <input id="note" type="text" autocomplete="off" placeholder="e.g. No onions, pick up at 6" maxlength="200">
       </div>
+      <div class="field" id="boltTimerField" hidden>
+        <label for="boltMins">Bolt timer (minutes) <span class="opt">same time as in the Bolt app</span></label>
+        <input id="boltMins" type="number" inputmode="numeric" min="1" max="180" step="1" placeholder="e.g. 15">
+        <div class="bolt-mins" id="boltMinChips"></div>
+      </div>
       <div class="savebar">
         <div class="sum">
           <span class="c" id="sumCount">No items picked</span>
@@ -866,6 +877,37 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     if (d.toDateString() === new Date().toDateString()) return clock(ts);
     return d.toLocaleDateString([], { day: 'numeric', month: 'short' }) + ' · ' + clock(ts);
   }
+  function boltMinsValue() {
+    var v = parseInt($('boltMins').value, 10);
+    return Number.isFinite(v) && v >= 1 ? Math.min(v, 180) : null;
+  }
+  function fmtTimer(ms) {
+    var neg = ms < 0, t = Math.floor(Math.abs(ms) / 1000);
+    var m = Math.floor(t / 60), sec = t % 60;
+    return (neg ? '+' : '') + m + ':' + (sec < 10 ? '0' : '') + sec;
+  }
+  function timerClass(ms) { return ms < 0 ? 'late' : ms <= 120000 ? 'warn' : ''; }
+  function boltTimerHtml(o) {
+    if (recordChannel(o) !== 'bolt' || o.status === 'done' || !o.timerMin || !o.timerStart) return '';
+    var end = o.timerStart + o.timerMin * 60000, left = end - Date.now();
+    return '<div class="bolt-timer ' + timerClass(left) + '" data-end="' + end + '" data-no="' + (o.no || 0) + '"><span class="bt-label">' + (left < 0 ? 'Bolt timer · late' : 'Bolt timer · ' + o.timerMin + ' min') + '</span><span class="bt-time">' + fmtTimer(left) + '</span></div>';
+  }
+  var timerAlerted = {};
+  function tickBoltTimers() {
+    document.querySelectorAll('.bolt-timer').forEach(function (el) {
+      var left = Number(el.dataset.end) - Date.now();
+      el.className = 'bolt-timer ' + timerClass(left);
+      el.querySelector('.bt-time').textContent = fmtTimer(left);
+      var label = el.querySelector('.bt-label');
+      if (left < 0 && label.textContent.indexOf('late') < 0) label.textContent = 'Bolt timer · late';
+      if (left < 0 && left > -5000 && !timerAlerted[el.dataset.end]) {
+        timerAlerted[el.dataset.end] = 1;
+        toast('Bolt order #' + pad(Number(el.dataset.no)) + ' timer finished');
+        try { if (navigator.vibrate) navigator.vibrate([300, 150, 300]); } catch (e) {}
+      }
+    });
+  }
+  setInterval(tickBoltTimers, 1000);
   function toast(msg) {
     var el = $('toast');
     el.textContent = msg;
@@ -1031,7 +1073,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
   function startEdit(id) {
     var o = state.orders.find(function (x) { return x.id === id; });
     if (!o) return;
-    if (!state.editId) state.draft = { cust: $('cust').value, note: $('note').value, qty: state.qty, channel: SALES_CHANNEL };
+    if (!state.editId) state.draft = { cust: $('cust').value, note: $('note').value, mins: $('boltMins').value, qty: state.qty, channel: SALES_CHANNEL };
     SALES_CHANNEL = recordChannel(o);
     state.editId = id;
     state.qty = {};
@@ -1042,6 +1084,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     });
     $('cust').value = o.customer || '';
     $('note').value = o.note || '';
+    $('boltMins').value = o.timerMin || '';
     state.tab = 'new';
     state.closing = false;
     disarm();
@@ -1056,6 +1099,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     state.qty = d ? d.qty : {};
     $('cust').value = d ? d.cust : '';
     $('note').value = d ? d.note : '';
+    $('boltMins').value = d ? (d.mins || '') : '';
   }
 
   /* ---------- rendering ---------- */
@@ -1064,6 +1108,8 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     $('channelSummary').textContent = 'Restaurant: ' + channelRecords(state.orders, 'restaurant').filter(function (o) { return o.status !== 'done'; }).length + ' open · Bolt Food: ' + channelRecords(state.orders, 'bolt').filter(function (o) { return o.status !== 'done'; }).length + ' open';
     $('newOrderChannel').value = SALES_CHANNEL; $('newOrderChannel').disabled = !!state.editId;
     $('menuChannel').value = SALES_CHANNEL;
+    $('boltTimerField').hidden = SALES_CHANNEL !== 'bolt';
+    if (!$('boltMinChips').firstChild) $('boltMinChips').innerHTML = [10, 15, 20, 25, 30, 40].map(function (m) { return '<button class="chip" type="button" data-min="' + m + '">' + m + ' min</button>'; }).join('');
     $('closeChannel').value = dayChannel; $('closeChannel').disabled = dayCloseBusy;
     $('historyChannel').value = dayChannel;
     $('tab-items').textContent = 'Menus';
@@ -1172,6 +1218,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
         (businessDateKey(o.createdAt) && businessDateKey(o.createdAt) < businessDateKey(Date.now()) ? '<p class="o-note">From ' + esc(businessDateKey(o.createdAt)) + ' · moves to that day when marked done</p>' : '') +
         '<ul class="o-lines">' + lines + '</ul>' +
         (o.note ? '<p class="o-note">' + esc(o.note) + '</p>' : '') +
+        boltTimerHtml(o) +
         '<div class="o-foot"><div class="o-meta"><span class="mono">' + esc(when(o.createdAt || Date.now())) + (o.editedAt ? ' · edited ' + esc(clock(o.editedAt)) : '') + '</span>' +
         (typeof o.total === 'number' ? '<span>Total <b class="mono">' + money(o.total) + '</b></span>' : '') + '</div>' +
         '<div class="o-actions">' +
@@ -1411,11 +1458,16 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
       customer: customer, lines: lines, note: $('note').value.trim(),
       total: priced ? Math.round(total * 100) / 100 : null
     };
+    var mins = SALES_CHANNEL === 'bolt' ? boltMinsValue() : null;
+    fields.timerMin = mins;
+    fields.timerStart = null;
     $('saveOrder').disabled = true;
 
     if (state.editId) {
       var o = state.orders.find(function (x) { return x.id === state.editId; });
       if (!o) { endEdit(); render(); return; }
+      // Keep the running timer unless the minutes were changed (then restart from now, like re-setting it in Bolt).
+      fields.timerStart = mins ? (mins === o.timerMin && o.timerStart ? o.timerStart : Date.now()) : null;
       var upd = Object.assign({}, o, fields, { editedAt: Date.now() });
       var okEdit = await guarded(function () { return put('orders', upd); }, 'Order #' + pad(o.no || 0) + ' updated');
       if (okEdit) {
@@ -1429,9 +1481,10 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     var todayKey = businessDateKey(Date.now());
     var no = state.orders.filter(function (x) { return recordChannel(x) === SALES_CHANNEL && businessDateKey(x.createdAt) === todayKey; }).reduce(function (m, x) { return Math.max(m, x.no || 0); }, 0) + 1;
     var order = Object.assign({ id: newId(), _channel: SALES_CHANNEL, no: no, status: 'open', createdAt: Date.now() }, fields);
+    if (mins) order.timerStart = order.createdAt;
     var ok = await guarded(function () { return put('orders', order); }, 'Order #' + pad(no) + ' saved for ' + customer);
     if (ok) {
-      state.qty = {}; $('cust').value = ''; $('note').value = '';
+      state.qty = {}; $('cust').value = ''; $('note').value = ''; $('boltMins').value = '';
       state.filter = 'open'; orderChannelFilter = 'all'; setTab('orders');
     } else { renderSummary(); }
   }
@@ -1795,10 +1848,10 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
   function switchMenuChannel(channel) {
     if (channel !== 'bolt' && channel !== 'restaurant') return;
     if (state.editId) { toast('Save or cancel the order edit first.'); renderTabs(); return; }
-    newChannelDrafts[SALES_CHANNEL] = { qty: state.qty, customer: $('cust').value, note: $('note').value };
+    newChannelDrafts[SALES_CHANNEL] = { qty: state.qty, customer: $('cust').value, note: $('note').value, mins: $('boltMins').value };
     SALES_CHANNEL = channel;
     var draft = newChannelDrafts[channel];
-    state.qty = draft ? draft.qty : {}; $('cust').value = draft ? draft.customer : ''; $('note').value = draft ? draft.note : '';
+    state.qty = draft ? draft.qty : {}; $('cust').value = draft ? draft.customer : ''; $('note').value = draft ? draft.note : ''; $('boltMins').value = draft ? (draft.mins || '') : '';
     $('itemName').value = ''; $('itemPrice').value = '';
     render();
   }
@@ -1817,6 +1870,9 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
   });
   $('goItems').addEventListener('click', function () { setTab('items'); });
   $('cust').addEventListener('input', renderSummary);
+  $('boltMinChips').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-min]'); if (b) $('boltMins').value = b.dataset.min;
+  });
   $('saveOrder').addEventListener('click', saveOrder);
   $('cancelEdit').addEventListener('click', function () { endEdit(); setTab('orders'); });
   $('addForm').addEventListener('submit', addItem);
@@ -2239,7 +2295,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
         if (state.tab === 'settings') state.tab = state.prevTab || 'new';
         state.items = []; state.orders = []; state.days = []; state.shifts = []; state.rates = []; state.payments = []; state.rateDraft = {}; state.editShift = null; state.editDraft = null;
         state.qty = {}; state.editId = null; state.draft = null; state.closing = false;
-        $('cust').value = ''; $('note').value = '';
+        $('cust').value = ''; $('note').value = ''; $('boltMins').value = '';
         render();
         try {
           if (sessionStorage.getItem('orderpad.updateNotice')) {
