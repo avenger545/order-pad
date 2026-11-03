@@ -1,3 +1,21 @@
+EXPENSES UPDATE - REQUIRED SETUP
+1. In Firebase Console, open Firestore Database > Rules.
+2. Replace the editor contents with the included firestore.rules and Publish.
+3. Upload all extracted app files to your existing Netlify site and reload.
+
+Owner, manager, and store accounts can view, add, edit, and delete expenses
+and manage the reusable expense item list.
+Open Expenses > Manage expense items to add your reusable item list.
+Select an item, enter the amount paid, optionally add a note, and Add expense.
+The selected day defaults to today in Georgia (Asia/Tbilisi). Choose another
+Day to view or record earlier expenses. Today returns to the current date.
+The daily total updates from all expenses recorded for the selected date.
+Expenses are shared across Restaurant and Bolt Food and retained independently
+of Close Day. Sales/payment totals are not reduced by expenses.
+Edit or delete a mistaken entry; removing an item keeps old expense records.
+New expense writes require an internet connection in the online app.
+If Expenses shows a rules warning, publish the included rules and reload.
+
 PAYMENT METHODS AND AUTOMATIC PRINT UPDATE
 - Add order opens Cash / Card / Transfer. Cancel leaves the order unsaved.
 - After saving a new order, receipt printing opens automatically on that device.

@@ -132,7 +132,8 @@ h1 {
 
 .tabs {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(6, 1fr);
+  overflow-x: auto;
   gap: 4px;
   padding: 4px;
   background: var(--surface);
@@ -471,6 +472,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
   .add { grid-template-columns: 1fr; }
   .tab { font-size: 0.78rem; }
 }
+@media (max-width: 480px) { .tabs .tab { min-width: 66px; padding-left: 4px; padding-right: 4px; } }
 #paymentDialog { width: min(420px, calc(100% - 32px)); border: 1px solid var(--line); border-radius: 18px; padding: 24px; color: var(--ink); background: var(--bg); }
 #paymentDialog::backdrop { background: rgba(0,0,0,.55); }
 #paymentDialog h2 { margin-top: 0; }
@@ -527,6 +529,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
       <button class="tab" role="tab" id="tab-orders" data-tab="orders" aria-selected="false">Orders <span class="badge" id="openBadge" hidden>0</span></button>
       <button class="tab" role="tab" id="tab-days" data-tab="days" aria-selected="false">Days</button>
       <button class="tab" role="tab" id="tab-shifts" data-tab="shifts" aria-selected="false">Shifts</button>
+      <button class="tab" role="tab" id="tab-expenses" data-tab="expenses" aria-selected="false">Expenses</button>
       <button class="tab" role="tab" id="tab-items" data-tab="items" aria-selected="false">Items</button>
     </nav>
   </header>
@@ -763,6 +766,35 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
       </div>
     </section>
 
+    <section id="view-expenses" aria-labelledby="tab-expenses" hidden>
+      <h2>Expenses</h2>
+      <p class="muted">Record what you pay throughout the day. Expenses are shared across the restaurant and Bolt Food.</p>
+      <p id="expenseStatus" role="status"></p>
+      <div class="field"><label for="expenseDate">Day</label><input id="expenseDate" type="date"></div>
+      <button class="btn sm" id="expensesToday" type="button">Today</button>
+      <div class="setcard" style="margin:16px 0"><strong id="expenseTotal">Total spent: 0</strong><span id="expenseCount"></span></div>
+      <form class="setcard" id="expenseForm" autocomplete="off">
+        <h3 id="expenseFormTitle">Record an expense</h3>
+        <div class="field"><label for="expenseItem">Item</label><select id="expenseItem" required></select></div>
+        <div class="field"><label for="expenseAmount">Amount paid</label><input id="expenseAmount" type="text" inputmode="decimal" placeholder="0.00" maxlength="12" required></div>
+        <div class="field"><label for="expenseNote">Note (optional)</label><input id="expenseNote" type="text" maxlength="240" placeholder="e.g. Supplier or purchase details"></div>
+        <button class="btn primary" id="saveExpense" type="submit">Add expense</button>
+        <button class="btn" id="cancelExpenseEdit" type="button" hidden>Cancel edit</button>
+      </form>
+      <h3>Expenses for this day</h3>
+      <ul class="itemlist" id="expenseList"></ul>
+      <p class="muted" id="expenseEmpty">No expenses recorded for this day.</p>
+      <details style="margin-top:24px"><summary><b>Manage expense items</b></summary>
+        <p class="muted">Add items such as vegetables, bread, packaging, or delivery. Removing an item keeps previous expenses.</p>
+        <form class="setcard" id="expenseItemForm" autocomplete="off">
+          <div class="field"><label for="expenseItemName">Item name</label><input id="expenseItemName" type="text" maxlength="80" required placeholder="e.g. Vegetables"></div>
+          <div class="field"><label for="expenseDefaultAmount">Usual amount (optional)</label><input id="expenseDefaultAmount" type="text" inputmode="decimal" maxlength="12" placeholder="0.00"></div>
+          <button class="btn" id="saveExpenseItem" type="submit">Add item</button>
+        </form>
+        <ul class="itemlist" id="expenseItemList"></ul>
+      </details>
+    </section>
+
     <section id="view-items" aria-labelledby="tab-items" hidden>
       <div class="field"><label for="menuChannel">Menu to edit</label><select id="menuChannel"><option value="restaurant">Restaurant</option><option value="bolt">Bolt Food</option></select></div>
       <form class="add" id="addForm" autocomplete="off">
@@ -862,7 +894,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     root.style.fontSize = ({ small: '14px', normal: '16px', large: '19px' })[prefs.size] || '16px';
   }
   var state = {
-    items: [], orders: [], days: [],
+    items: [], orders: [], days: [], expenseItems: [], expenses: [],
     qty: {}, tab: 'new', filter: 'open', loaded: false, mode: 'pending',
     armed: null, editId: null, draft: null, closing: false, openDays: {}, auth: FB_ON ? 'checking' : 'in', worker: false, manager: false,
     shifts: [], shiftPeriod: 'week', editShift: null, editDraft: null,
@@ -912,11 +944,11 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
   function lsLoad() {
     try {
       var j = JSON.parse(localStorage.getItem(LS) || 'null');
-      if (j) { state.items = j.items || []; state.orders = j.orders || []; state.days = j.days || []; state.shifts = j.shifts || []; state.rates = j.rates || []; state.payments = j.payments || []; }
+      if (j) { state.items = j.items || []; state.orders = j.orders || []; state.days = j.days || []; state.shifts = j.shifts || []; state.rates = j.rates || []; state.payments = j.payments || []; state.expenseItems = j.expenseItems || []; state.expenses = j.expenses || []; }
     } catch (e) {}
   }
   function lsSave() {
-    try { localStorage.setItem(LS, JSON.stringify({ items: state.items, orders: state.orders, days: state.days, shifts: state.shifts, rates: state.rates, payments: state.payments })); } catch (e) {}
+    try { localStorage.setItem(LS, JSON.stringify({ items: state.items, orders: state.orders, days: state.days, shifts: state.shifts, rates: state.rates, payments: state.payments, expenseItems: state.expenseItems, expenses: state.expenses })); } catch (e) {}
   }
   function watchWrite(p) {
     p.catch(function (e) {
@@ -1013,6 +1045,16 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     var sq = db.collection('shifts');
     if (limited) sq = sq.where('end', '==', null);
     unsubs.push(sq.onSnapshot(function (s) { state.shifts = fromSnap(s); got.shifts = true; done(); }, fail));
+    {
+      expenseReady = { expenses: false, expenseItems: false }; expenseLoadError = '';
+      ['expenses', 'expenseItems'].forEach(function (name) {
+        unsubs.push(db.collection(name).onSnapshot(function (snap) {
+          state[name] = fromSnap(snap); expenseReady[name] = true; renderExpenses();
+        }, function () {
+          expenseLoadError = 'Expenses could not load. Publish the updated Firestore rules, check your connection, and reload.'; renderExpenses();
+        }));
+      });
+    }
     if (limited) { got.workers = true; got.payments = true; }
     else {
       unsubs.push(db.collection('workers').onSnapshot(function (s) { state.rates = fromSnap(s); got.workers = true; done(); }, fail));
@@ -1097,12 +1139,13 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     $('closeChannel').value = dayChannel; $('closeChannel').disabled = dayCloseBusy;
     $('historyChannel').value = dayChannel;
     $('tab-items').textContent = 'Menus';
-    ['new', 'orders', 'days', 'shifts', 'items'].forEach(function (t) {
+    ['new', 'orders', 'days', 'shifts', 'expenses', 'items'].forEach(function (t) {
       $('tab-' + t).setAttribute('aria-selected', String(state.tab === t));
       $('view-' + t).hidden = state.auth !== 'in' || state.tab !== t || (t === 'items' && state.worker);
     });
     $('tab-items').hidden = state.worker;
-    document.querySelector('.tabs').style.gridTemplateColumns = 'repeat(' + (state.worker ? 4 : 5) + ', 1fr)';
+    $('tab-expenses').hidden = false;
+    document.querySelector('.tabs').style.gridTemplateColumns = 'repeat(' + (state.worker ? 5 : 6) + ', 1fr)';
     document.querySelector('.tabs').hidden = state.auth !== 'in' || state.tab === 'settings';
     $('view-settings').hidden = state.auth !== 'in' || state.tab !== 'settings';
     $('view-login').hidden = state.auth === 'in';
@@ -1456,7 +1499,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     var valid = {};
     pickList().forEach(function (p) { valid[p.key] = 1; });
     Object.keys(state.qty).forEach(function (k) { if (!valid[k]) delete state.qty[k]; });
-    renderTabs(); renderPicker(); renderSummary(); renderSales(); renderOrders(); renderDays(); renderShifts(); renderItems(); renderFoot(); renderSettings();
+    renderTabs(); renderPicker(); renderSummary(); renderSales(); renderOrders(); renderDays(); renderShifts(); renderExpenses(); renderItems(); renderFoot(); renderSettings();
   }
 
   /* ---------- actions ---------- */
@@ -1678,6 +1721,114 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
     var ok = await guarded(function () { return put('items', item); }, name + ' added');
     if (ok) { $('itemName').value = ''; $('itemPrice').value = ''; $('itemName').focus(); }
   }
+
+  /* ---------- expenses ---------- */
+  var expenseBusy = false, expenseEditId = null, expenseLoadError = '';
+  var expenseReady = { expenses: false, expenseItems: false };
+  function expensesAvailable() {
+    return state.auth === 'in' && !expenseLoadError && (state.mode === 'local' || (expenseReady.expenses && expenseReady.expenseItems));
+  }
+  function expenseAmountValue(raw) {
+    var value = String(raw).trim().replace(',', '.');
+    if (!/^\d+(\.\d{1,2})?$/.test(value)) return null;
+    var amount = Number(value);
+    return Number.isFinite(amount) && amount > 0 && amount <= 999999999 ? Math.round(amount * 100) / 100 : null;
+  }
+  function validExpenseDate(value) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    var date = new Date(value + 'T12:00:00Z');
+    return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+  }
+  function dailyExpenses(date) { return state.expenses.filter(function (e) { return e.date === date; }).sort(function (a, b) { return (b.createdAt || 0) - (a.createdAt || 0); }); }
+  function expenseTotal(list) { return list.reduce(function (sum, e) { return sum + Math.round(e.amount * 100); }, 0) / 100; }
+  function resetExpenseForm() {
+    expenseEditId = null; $('expenseForm').reset(); renderExpenses();
+  }
+  function renderExpenses() {
+    if (!$('expenseDate').value) $('expenseDate').value = businessDateKey(Date.now());
+    var ready = expensesAvailable(), date = $('expenseDate').value, list = dailyExpenses(date);
+    $('expenseStatus').textContent = expenseLoadError || (ready ? '' : 'Loading expenses…');
+    $('expenseTotal').textContent = 'Total spent: ' + (ready ? money(expenseTotal(list)) : '—');
+    $('expenseCount').textContent = ready ? plural(list.length, 'expense', 'expenses') : '';
+    var selected = $('expenseItem').value;
+    var options = state.expenseItems.slice().sort(function (a, b) { return a.name.localeCompare(b.name); });
+    var editing = state.expenses.find(function (e) { return e.id === expenseEditId; });
+    if (editing && !options.some(function (i) { return i.id === editing.itemId; })) options.push({ id: editing.itemId, name: editing.name + ' (removed item)' });
+    $('expenseItem').innerHTML = '<option value="">Choose an item</option>' + options.map(function (i) { return '<option value="' + esc(i.id) + '">' + esc(i.name) + '</option>'; }).join('');
+    $('expenseItem').value = selected;
+    $('saveExpense').disabled = !ready || expenseBusy || !options.length;
+    $('saveExpenseItem').disabled = !ready || expenseBusy;
+    ['expenseDate', 'expenseItem', 'expenseAmount', 'expenseNote', 'expenseItemName', 'expenseDefaultAmount'].forEach(function (id) { $(id).disabled = !ready || expenseBusy; });
+    $('expenseFormTitle').textContent = expenseEditId ? 'Edit expense' : 'Record an expense';
+    $('saveExpense').textContent = expenseBusy ? 'Saving…' : expenseEditId ? 'Save changes' : 'Add expense';
+    $('cancelExpenseEdit').hidden = !expenseEditId;
+    $('expenseEmpty').hidden = !ready || list.length > 0;
+    $('expenseList').innerHTML = list.map(function (e) {
+      return '<li class="order" data-id="' + esc(e.id) + '"><div><strong>' + esc(e.name) + '</strong> · <b>' + money(e.amount) + '</b></div>' + (e.note ? '<p>' + esc(e.note) + '</p>' : '') + '<div class="o-actions"><button class="btn sm" type="button" data-expense="edit">Edit</button><button class="btn sm danger" type="button" data-expense="delete">' + (state.armed === 'expense:' + e.id ? 'Tap again to delete' : 'Delete') + '</button></div></li>';
+    }).join('');
+    $('expenseItemList').innerHTML = state.expenseItems.map(function (i) {
+      return '<li class="order" data-id="' + esc(i.id) + '"><span>' + esc(i.name) + (typeof i.defaultAmount === 'number' ? ' · ' + money(i.defaultAmount) : '') + '</span><button class="btn sm danger" type="button" data-remove-expense-item>' + (state.armed === 'expenseItem:' + i.id ? 'Tap again to remove' : 'Remove item') + '</button></li>';
+    }).join('');
+  }
+  async function writeExpense(collection, record, deleting) {
+    if (!expensesAvailable() || expenseBusy) return false;
+    if (db && navigator.onLine === false) { toast('Connect to the internet to save expenses.'); return false; }
+    expenseBusy = true; renderExpenses();
+    try {
+      if (db) {
+        var ref = db.collection(collection).doc(record.id), data = Object.assign({}, record); delete data.id;
+        if (deleting) await ref.delete(); else await ref.set(data);
+      } else {
+        var index = state[collection].findIndex(function (e) { return e.id === record.id; });
+        if (deleting) { if (index >= 0) state[collection].splice(index, 1); }
+        else if (index >= 0) state[collection][index] = record; else state[collection].push(record);
+        lsSave();
+      }
+      return true;
+    } catch (e) { toast('Could not save expenses. Check your connection and the updated Firestore rules.'); return false; }
+    finally { expenseBusy = false; renderExpenses(); }
+  }
+  $('expenseItemForm').addEventListener('submit', async function (e) {
+    e.preventDefault();
+    var name = $('expenseItemName').value.trim(), raw = $('expenseDefaultAmount').value.trim(), amount = raw ? expenseAmountValue(raw) : null;
+    if (!name || name.length > 80 || (raw && amount === null)) { toast('Enter an item name and a valid positive amount (up to 2 decimals).'); return; }
+    if (state.expenseItems.some(function (i) { return i.name.toLowerCase() === name.toLowerCase(); })) { toast('This item already exists.'); return; }
+    var item = { id: newId(), name: name, defaultAmount: amount, createdAt: Date.now() };
+    if (await writeExpense('expenseItems', item, false)) { $('expenseItemForm').reset(); toast('Expense item added.'); }
+  });
+  $('expenseItem').addEventListener('change', function () {
+    var item = state.expenseItems.find(function (i) { return i.id === $('expenseItem').value; });
+    $('expenseAmount').value = item && typeof item.defaultAmount === 'number' ? item.defaultAmount.toFixed(2) : '';
+  });
+  $('expenseForm').addEventListener('submit', async function (e) {
+    e.preventDefault();
+    var previous = state.expenses.find(function (x) { return x.id === expenseEditId; });
+    if (expenseEditId && !previous) { toast('This expense was removed on another device. Cancel this edit.'); return; }
+    var item = state.expenseItems.find(function (i) { return i.id === $('expenseItem').value; });
+    if (!item && previous && previous.itemId === $('expenseItem').value) item = { id: previous.itemId, name: previous.name };
+    var amount = expenseAmountValue($('expenseAmount').value), date = $('expenseDate').value;
+    if (!item || amount === null || !validExpenseDate(date)) { toast('Choose an item, a valid date, and an amount greater than zero (up to 2 decimals).'); return; }
+    var record = { id: previous ? previous.id : newId(), itemId: item.id, name: item.name, amount: amount, date: date, note: $('expenseNote').value.trim().slice(0, 240), createdAt: previous ? previous.createdAt : Date.now() };
+    if (await writeExpense('expenses', record, false)) { resetExpenseForm(); toast(previous ? 'Expense updated.' : 'Expense added.'); }
+  });
+  $('expenseDate').addEventListener('change', function () { if (!expenseBusy) resetExpenseForm(); });
+  $('expensesToday').addEventListener('click', function () { if (expenseBusy) return; $('expenseDate').value = businessDateKey(Date.now()); resetExpenseForm(); });
+  $('cancelExpenseEdit').addEventListener('click', function () { if (!expenseBusy) resetExpenseForm(); });
+  $('expenseList').addEventListener('click', async function (e) {
+    var button = e.target.closest('[data-expense]'); if (!button || expenseBusy || !expensesAvailable()) return;
+    var record = state.expenses.find(function (x) { return x.id === button.closest('[data-id]').dataset.id; }); if (!record) return;
+    if (button.dataset.expense === 'edit') {
+      expenseEditId = record.id; renderExpenses(); $('expenseItem').value = record.itemId; $('expenseAmount').value = record.amount.toFixed(2); $('expenseNote').value = record.note || ''; $('expenseAmount').focus(); return;
+    }
+    var key = 'expense:' + record.id; if (state.armed !== key) { arm(key); renderExpenses(); return; }
+    disarm(); if (await writeExpense('expenses', record, true)) { if (expenseEditId === record.id) resetExpenseForm(); toast('Expense deleted.'); }
+  });
+  $('expenseItemList').addEventListener('click', async function (e) {
+    var button = e.target.closest('[data-remove-expense-item]'); if (!button || expenseBusy || !expensesAvailable()) return;
+    var record = state.expenseItems.find(function (x) { return x.id === button.closest('[data-id]').dataset.id; }); if (!record) return;
+    var key = 'expenseItem:' + record.id; if (state.armed !== key) { arm(key); renderExpenses(); return; }
+    disarm(); if (await writeExpense('expenseItems', record, true)) toast('Item removed. Previous expenses are kept.');
+  });
 
   /* ---------- shifts ---------- */
   function pad2(n) { return String(n).padStart(2, '0'); }
@@ -2346,6 +2497,7 @@ input:focus-visible { outline-offset: 0; border-color: var(--accent); }
         customReceiptLogo = ''; sharedLogoEnabled = true; sharedLogoReady = false;
         db = null; state.auth = 'out'; state.loaded = false; state.worker = false; state.manager = false; state.userEmail = '';
         if (state.tab === 'settings') state.tab = state.prevTab || 'new';
+        state.expenses = []; state.expenseItems = []; expenseEditId = null; expenseLoadError = ''; expenseReady = { expenses: false, expenseItems: false };
         state.items = []; state.orders = []; state.days = []; state.shifts = []; state.rates = []; state.payments = []; state.rateDraft = {}; state.editShift = null; state.editDraft = null;
         state.qty = {}; state.editId = null; state.draft = null; state.closing = false;
         $('cust').value = ''; $('note').value = '';
