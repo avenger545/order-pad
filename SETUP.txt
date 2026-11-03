@@ -1,3 +1,18 @@
+PAYMENT METHODS AND AUTOMATIC PRINT UPDATE
+- Add order opens Cash / Card / Transfer. Cancel leaves the order unsaved.
+- After saving a new order, receipt printing opens automatically on that device.
+- Editing asks for the payment method but does not automatically reprint.
+- Close day and saved Days show order counts and amounts per method.
+- Old orders without a payment method appear under Not recorded.
+- Applies to both Restaurant and Bolt Food; payment selection records the method,
+  it does not charge a card or verify a bank transfer.
+- Browser printing still requires the system/browser Print confirmation.
+  Silent physical printing needs a compatible device/printer integration.
+- If printing fails or is cancelled, the saved order remains available. Use
+  Print receipt on that order to retry; do not add the order again.
+- Upload all the extracted app files to your existing Netlify site, then reload
+  the app on each device. No new Firebase rules are needed for this update.
+
 ORDER PAD — OWNER SHIFT CORRECTIONS
 
 1. Extract this ZIP. Upload the website files to the published branch/folder of
@@ -154,3 +169,14 @@ Midnight closing and carried-over unfinished orders continue for both channels.
 Existing menu items, orders and history stay in their original collections.
 Upload all files and refresh; no additional rules changes beyond the Bolt rules.
 The old bolt.html link also opens the unified interface (Bolt selected for New).
+
+
+BOLT PREPARATION TIMER
+Choose Bolt Food in New, enter preparation minutes (1-240), then save.
+The deadline starts at save time and is saved with the order for all devices.
+Open Bolt orders show Ready in / Overdue on the combined Orders screen.
+Editing does not restart the timer. Done hides it; reopening uses the original deadline.
+Existing orders without a deadline have no timer. Restaurant orders are unchanged.
+This does not connect to the Bolt app: enter its preparation time manually.
+Keep device clocks accurate. After uploading all files to GitHub, refresh every device.
+No new Firestore rules are required for this update.
